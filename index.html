@@ -1,0 +1,1015 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Building Clearer</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        html, body {
+            width: 100%;
+            height: 100%;
+            overflow-x: hidden;
+        }
+        body {
+            background: #1a1a2e;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            font-family: monospace;
+        }
+        #gameContainer {
+            text-align: center;
+            width: 100%;
+            max-width: 100%;
+            padding: 10px;
+        }
+        canvas {
+            border: 4px solid #4a4a6a;
+            image-rendering: pixelated;
+            image-rendering: crisp-edges;
+            max-width: 100%;
+            height: auto;
+            display: block;
+            margin: 0 auto;
+        }
+        #ui {
+            color: #fff;
+            margin-top: 10px;
+            font-size: 14px;
+        }
+        #instructions {
+            color: #888;
+            margin-top: 10px;
+            font-size: 11px;
+            word-wrap: break-word;
+        }
+        .mobile-only {
+            display: none;
+        }
+        @media (max-width: 600px), (max-aspect-ratio: 1/1) {
+            .desktop-only {
+                display: none;
+            }
+            .mobile-only {
+                display: block;
+                color: #888;
+                margin-top: 10px;
+                font-size: 11px;
+            }
+            #ui {
+                font-size: 12px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div id="gameContainer">
+        <canvas id="game" width="640" height="480"></canvas>
+        <div id="ui">
+            <span id="health">Health: 100</span> |
+            <span id="ammo">Ammo: 30</span> |
+            <span id="score">Score: 0</span> |
+            <span id="level">Building: 1</span>
+        </div>
+        <div id="instructions" class="desktop-only">
+            WASD to move | Mouse to aim | Click to shoot | R to reload | Clear all enemies to advance!
+        </div>
+        <div id="instructions-mobile" class="mobile-only">
+            Left side: drag to move | Right side: tap to aim & shoot
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('game');
+        const ctx = canvas.getContext('2d');
+        ctx.imageSmoothingEnabled = false;
+
+        // Detect mobile (portrait) vs desktop (landscape)
+        const isMobile = window.innerWidth < 600 || (window.innerWidth < window.innerHeight);
+
+        // Set canvas size based on device
+        if (isMobile) {
+            canvas.width = 360;
+            canvas.height = 640;
+        } else {
+            canvas.width = 640;
+            canvas.height = 480;
+        }
+
+        const W = canvas.width;
+        const H = canvas.height;
+
+        // Game state
+        let gameState = 'playing'; // playing, gameover, levelcomplete
+        let score = 0;
+        let currentLevel = 1;
+
+        // Player
+        const player = {
+            x: 320,
+            y: 400,
+            width: 16,
+            height: 16,
+            speed: 1.5,
+            health: 100,
+            maxHealth: 100,
+            ammo: 30,
+            maxAmmo: 30,
+            angle: 0,
+            reloading: false,
+            reloadTime: 0,
+            shootCooldown: 0,
+            weapon: 'pistol'
+        };
+
+        // Weapon definitions
+        const WEAPONS = {
+            pistol: { fireRate: 25, ammoUse: 1, color: '#f39c12', label: 'P' },
+            smg: { fireRate: 8, ammoUse: 1, color: '#3498db', label: 'M' },
+            shotgun: { fireRate: 45, ammoUse: 3, spread: 5, pellets: 5, color: '#e67e22', label: 'S' },
+            rifle: { fireRate: 20, ammoUse: 1, damage: 35, color: '#1abc9c', label: 'F' },
+            railgun: { fireRate: 70, ammoUse: 4, pierce: true, color: '#9b59b6', label: 'R' },
+            minigun: { fireRate: 4, ammoUse: 1, color: '#e74c3c', label: 'G' }
+        };
+        const WEAPON_LIST = ['pistol', 'smg', 'shotgun', 'rifle', 'railgun', 'minigun'];
+
+        // Enemy types
+        const ENEMY_TYPES = {
+            grunt: { color: '#e74c3c', colorDark: '#c0392b', speed: 1, health: 40, size: 14, shootDist: 120, canShoot: true },
+            charger: { color: '#2ecc71', colorDark: '#27ae60', speed: 2.5, health: 25, size: 12, shootDist: 0, canShoot: false },
+            tank: { color: '#e67e22', colorDark: '#d35400', speed: 0.6, health: 120, size: 20, shootDist: 100, canShoot: true },
+            sniper: { color: '#9b59b6', colorDark: '#8e44ad', speed: 0.8, health: 30, size: 12, shootDist: 250, canShoot: true }
+        };
+
+        // Input
+        const keys = {};
+        let mouseX = 0, mouseY = 0;
+        let mouseDown = false;
+
+        // Game objects
+        let bullets = [];
+        let enemies = [];
+        let walls = [];
+        let particles = [];
+        let pickups = [];
+
+        // Safe zone at spawn
+        const safeZone = { x: 0, y: 0, radius: 50 };
+
+        // Colors (pixel art palette)
+        const COLORS = {
+            player: '#4ecdc4',
+            playerDark: '#2ea8a0',
+            enemy: '#e74c3c',
+            enemyDark: '#c0392b',
+            bullet: '#f39c12',
+            wall: '#5d5d8a',
+            wallDark: '#4a4a6a',
+            floor: '#2d2d44',
+            door: '#8b4513',
+            health: '#2ecc71',
+            ammo: '#f1c40f',
+            shotgun: '#e67e22',
+            railgun: '#9b59b6'
+        };
+
+        // Generate level
+        function generateLevel(levelNum) {
+            walls = [];
+            enemies = [];
+            pickups = [];
+            bullets = [];
+            particles = [];
+
+            // Set player spawn based on device
+            if (isMobile) {
+                player.x = W / 2;
+                player.y = H - 50;
+            } else {
+                player.x = 550;
+                player.y = 430;
+            }
+            player.health = player.maxHealth;
+            player.ammo = player.maxAmmo;
+
+            // Set safe zone at spawn
+            safeZone.x = player.x;
+            safeZone.y = player.y;
+
+            // Outer walls - use W and H
+            walls.push({ x: 0, y: 0, w: W, h: 20 });
+            walls.push({ x: 0, y: H - 20, w: W, h: 20 });
+            walls.push({ x: 0, y: 0, w: 20, h: H });
+            walls.push({ x: W - 20, y: 0, w: 20, h: H });
+
+            // Room dividers based on level and device
+            let roomConfigs;
+
+            if (isMobile) {
+                // Mobile layouts - vertical rooms
+                roomConfigs = [
+                    // Level 1 - Simple vertical rooms
+                    [
+                        { x: 0, y: 150, w: 200, h: 20 },
+                        { x: 160, y: 280, w: 200, h: 20 },
+                        { x: 0, y: 410, w: 200, h: 20 },
+                        { x: 160, y: 540, w: 200, h: 20 },
+                    ],
+                    // Level 2 - More complex
+                    [
+                        { x: 120, y: 0, w: 20, h: 120 },
+                        { x: 220, y: 80, w: 20, h: 120 },
+                        { x: 0, y: 200, w: 150, h: 20 },
+                        { x: 210, y: 200, w: 150, h: 20 },
+                        { x: 120, y: 280, w: 20, h: 120 },
+                        { x: 0, y: 400, w: 250, h: 20 },
+                        { x: 180, y: 480, w: 20, h: 100 },
+                        { x: 80, y: 560, w: 200, h: 20 },
+                    ],
+                    // Level 3+ - Maze-like
+                    [
+                        { x: 80, y: 60, w: 20, h: 100 },
+                        { x: 180, y: 0, w: 20, h: 120 },
+                        { x: 260, y: 80, w: 20, h: 100 },
+                        { x: 0, y: 160, w: 120, h: 20 },
+                        { x: 180, y: 160, w: 180, h: 20 },
+                        { x: 120, y: 220, w: 20, h: 100 },
+                        { x: 60, y: 320, w: 200, h: 20 },
+                        { x: 220, y: 380, w: 20, h: 100 },
+                        { x: 0, y: 440, w: 180, h: 20 },
+                        { x: 80, y: 500, w: 20, h: 80 },
+                        { x: 160, y: 540, w: 120, h: 20 },
+                    ]
+                ];
+            } else {
+                // Desktop layouts
+                roomConfigs = [
+                    // Level 1 - Simple rooms
+                    [
+                        { x: 200, y: 0, w: 20, h: 150 },
+                        { x: 200, y: 200, w: 20, h: 280 },
+                        { x: 420, y: 0, w: 20, h: 280 },
+                        { x: 420, y: 330, w: 20, h: 150 },
+                        { x: 200, y: 300, w: 150, h: 20 },
+                    ],
+                    // Level 2 - More complex
+                    [
+                        { x: 150, y: 0, w: 20, h: 200 },
+                        { x: 150, y: 250, w: 20, h: 180 },
+                        { x: 300, y: 100, w: 20, h: 150 },
+                        { x: 300, y: 300, w: 20, h: 120 },
+                        { x: 470, y: 0, w: 20, h: 150 },
+                        { x: 470, y: 200, w: 20, h: 200 },
+                        { x: 150, y: 200, w: 100, h: 20 },
+                        { x: 370, y: 250, w: 100, h: 20 },
+                    ],
+                    // Level 3+ - Maze-like
+                    [
+                        { x: 100, y: 80, w: 200, h: 20 },
+                        { x: 100, y: 80, w: 20, h: 150 },
+                        { x: 340, y: 0, w: 20, h: 180 },
+                        { x: 340, y: 230, w: 20, h: 100 },
+                        { x: 200, y: 200, w: 160, h: 20 },
+                        { x: 500, y: 100, w: 20, h: 200 },
+                        { x: 400, y: 300, w: 120, h: 20 },
+                        { x: 100, y: 350, w: 20, h: 130 },
+                        { x: 100, y: 350, w: 200, h: 20 },
+                        { x: 280, y: 350, w: 20, h: 80 },
+                        { x: 450, y: 380, w: 20, h: 100 },
+                    ]
+                ];
+            }
+
+            const configIndex = Math.min(levelNum - 1, roomConfigs.length - 1);
+            walls.push(...roomConfigs[configIndex]);
+
+            // Spawn enemies - find valid positions not in walls
+            const enemyCount = 3 + levelNum * 2;
+            let spawned = 0;
+            let attempts = 0;
+
+            while (spawned < enemyCount && attempts < 500) {
+                attempts++;
+                // Try random position in playable area
+                const x = 40 + Math.random() * (W - 80);
+                const y = 40 + Math.random() * (H - 120);
+
+                // Pick enemy type based on level
+                let type = 'grunt';
+                const roll = Math.random();
+                if (levelNum >= 4 && roll < 0.15) {
+                    type = 'sniper';
+                } else if (levelNum >= 3 && roll < 0.25) {
+                    type = 'tank';
+                } else if (levelNum >= 2 && roll < 0.4) {
+                    type = 'charger';
+                }
+                const enemyType = ENEMY_TYPES[type];
+
+                // Check not in wall and not too close to player spawn
+                const distToPlayer = Math.hypot(x - player.x, y - player.y);
+                if (!pointInWalls(x, y, enemyType.size, enemyType.size) && distToPlayer > 100) {
+                    enemies.push({
+                        x: x,
+                        y: y,
+                        type: type,
+                        width: enemyType.size,
+                        height: enemyType.size,
+                        speed: enemyType.speed + levelNum * 0.1,
+                        health: enemyType.health + levelNum * 5,
+                        maxHealth: enemyType.health + levelNum * 5,
+                        shootCooldown: 0,
+                        alertDistance: 180 + levelNum * 15,
+                        shootDistance: enemyType.shootDist,
+                        canShoot: enemyType.canShoot
+                    });
+                    spawned++;
+                }
+            }
+
+            // Spawn pickups at valid positions
+            for (let i = 0; i < 50; i++) {
+                const hx = 40 + Math.random() * (W - 80);
+                const hy = 40 + Math.random() * (H - 80);
+                if (!pointInWalls(hx, hy, 12, 12)) {
+                    pickups.push({ x: hx, y: hy, type: 'health', width: 12, height: 12 });
+                    break;
+                }
+            }
+            for (let i = 0; i < 50; i++) {
+                const ax = 40 + Math.random() * (W - 80);
+                const ay = 40 + Math.random() * (H - 80);
+                if (!pointInWalls(ax, ay, 12, 12)) {
+                    pickups.push({ x: ax, y: ay, type: 'ammo', width: 12, height: 12 });
+                    break;
+                }
+            }
+        }
+
+        // Draw pixel rectangle
+        function drawPixelRect(x, y, w, h, color, darkColor) {
+            ctx.fillStyle = color;
+            ctx.fillRect(Math.floor(x), Math.floor(y), w, h);
+            if (darkColor) {
+                ctx.fillStyle = darkColor;
+                ctx.fillRect(Math.floor(x), Math.floor(y) + h - 3, w, 3);
+                ctx.fillRect(Math.floor(x) + w - 3, Math.floor(y), 3, h);
+            }
+        }
+
+        // Draw player
+        function drawPlayer() {
+            const px = Math.floor(player.x - player.width / 2);
+            const py = Math.floor(player.y - player.height / 2);
+
+            // Body
+            drawPixelRect(px, py, player.width, player.height, COLORS.player, COLORS.playerDark);
+
+            // Gun
+            const gunLength = 12;
+            const gunX = player.x + Math.cos(player.angle) * gunLength;
+            const gunY = player.y + Math.sin(player.angle) * gunLength;
+
+            ctx.strokeStyle = '#666';
+            ctx.lineWidth = 4;
+            ctx.beginPath();
+            ctx.moveTo(player.x, player.y);
+            ctx.lineTo(gunX, gunY);
+            ctx.stroke();
+
+            // Eyes (facing mouse direction)
+            ctx.fillStyle = '#fff';
+            const eyeOffsetX = Math.cos(player.angle) * 3;
+            const eyeOffsetY = Math.sin(player.angle) * 3;
+            ctx.fillRect(px + 4 + eyeOffsetX, py + 4 + eyeOffsetY, 3, 3);
+            ctx.fillRect(px + 9 + eyeOffsetX, py + 4 + eyeOffsetY, 3, 3);
+        }
+
+        // Draw enemy
+        function drawEnemy(enemy) {
+            const ex = Math.floor(enemy.x - enemy.width / 2);
+            const ey = Math.floor(enemy.y - enemy.height / 2);
+            const type = ENEMY_TYPES[enemy.type] || ENEMY_TYPES.grunt;
+
+            drawPixelRect(ex, ey, enemy.width, enemy.height, type.color, type.colorDark);
+
+            // Health bar
+            const healthPercent = enemy.health / enemy.maxHealth;
+            ctx.fillStyle = '#333';
+            ctx.fillRect(ex, ey - 6, enemy.width, 4);
+            ctx.fillStyle = COLORS.health;
+            ctx.fillRect(ex, ey - 6, enemy.width * healthPercent, 4);
+
+            // Eyes (adjust position based on size)
+            const eyeOffset = Math.floor(enemy.width / 5);
+            const eyeSize = Math.max(2, Math.floor(enemy.width / 5));
+            ctx.fillStyle = '#fff';
+            ctx.fillRect(ex + eyeOffset, ey + eyeOffset, eyeSize, eyeSize);
+            ctx.fillRect(ex + enemy.width - eyeOffset - eyeSize, ey + eyeOffset, eyeSize, eyeSize);
+        }
+
+        // Check collision between rectangles
+        function rectCollision(a, b) {
+            return a.x < b.x + b.w &&
+                   a.x + a.w > b.x &&
+                   a.y < b.y + b.h &&
+                   a.y + a.h > b.y;
+        }
+
+        // Check if point is in wall
+        function pointInWalls(x, y, width, height) {
+            for (const wall of walls) {
+                if (rectCollision(
+                    { x: x - width/2, y: y - height/2, w: width, h: height },
+                    wall
+                )) {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        // Update player
+        function updatePlayer() {
+            if (gameState !== 'playing') return;
+
+            let newX = player.x;
+            let newY = player.y;
+
+            // Keyboard controls
+            if (keys['w'] || keys['W']) newY -= player.speed;
+            if (keys['s'] || keys['S']) newY += player.speed;
+            if (keys['a'] || keys['A']) newX -= player.speed;
+            if (keys['d'] || keys['D']) newX += player.speed;
+
+            // Touch controls (mobile)
+            if (isMobile) {
+                newX += touchMove.x * player.speed * 2;
+                newY += touchMove.y * player.speed * 2;
+            }
+
+            // Check wall collisions
+            if (!pointInWalls(newX, player.y, player.width, player.height)) {
+                player.x = newX;
+            }
+            if (!pointInWalls(player.x, newY, player.width, player.height)) {
+                player.y = newY;
+            }
+
+            // Aim angle
+            player.angle = Math.atan2(mouseY - player.y, mouseX - player.x);
+
+            // Shooting
+            if (player.shootCooldown > 0) player.shootCooldown--;
+
+            const weapon = WEAPONS[player.weapon];
+            if (mouseDown && player.ammo >= weapon.ammoUse && player.shootCooldown === 0 && !player.reloading) {
+                if (player.weapon === 'shotgun') {
+                    for (let i = 0; i < weapon.pellets; i++) {
+                        const spread = (Math.random() - 0.5) * 0.4;
+                        shoot(player.x, player.y, player.angle + spread, true);
+                    }
+                } else {
+                    shoot(player.x, player.y, player.angle, true, player.weapon === 'railgun');
+                }
+                player.ammo -= weapon.ammoUse;
+                player.shootCooldown = weapon.fireRate;
+            }
+
+            // Reloading
+            if (player.reloading) {
+                player.reloadTime--;
+                if (player.reloadTime <= 0) {
+                    player.ammo = player.maxAmmo;
+                    player.reloading = false;
+                }
+            }
+
+            // Auto-reload when empty, or manual reload with R
+            if (!player.reloading && (player.ammo === 0 || keys['r'] || keys['R'])) {
+                if (player.ammo < player.maxAmmo) {
+                    player.reloading = true;
+                    player.reloadTime = 60;
+                }
+            }
+
+            // Check pickup collisions
+            for (let i = pickups.length - 1; i >= 0; i--) {
+                const p = pickups[i];
+                const dist = Math.hypot(player.x - p.x, player.y - p.y);
+                if (dist < 20) {
+                    if (p.type === 'health') {
+                        player.health = Math.min(player.health + 30, player.maxHealth);
+                    } else if (p.type === 'ammo') {
+                        player.ammo = Math.min(player.ammo + 15, player.maxAmmo);
+                    } else if (WEAPONS[p.type]) {
+                        // Drop current weapon if not pistol
+                        if (player.weapon !== 'pistol') {
+                            pickups.push({
+                                x: player.x + (Math.random() - 0.5) * 20,
+                                y: player.y + (Math.random() - 0.5) * 20,
+                                type: player.weapon,
+                                width: 12,
+                                height: 12
+                            });
+                        }
+                        player.weapon = p.type;
+                        player.ammo = player.maxAmmo;
+                    }
+                    pickups.splice(i, 1);
+                }
+            }
+
+            // Update UI
+            document.getElementById('health').textContent = `Health: ${player.health}`;
+            const weaponName = player.weapon.charAt(0).toUpperCase() + player.weapon.slice(1);
+            document.getElementById('ammo').textContent = player.reloading ? 'Reloading...' : `${weaponName}: ${player.ammo}`;
+            document.getElementById('score').textContent = `Score: ${score}`;
+            document.getElementById('level').textContent = `Building: ${currentLevel}`;
+        }
+
+        // Shoot bullet
+        function shoot(x, y, angle, isPlayer, pierce = false) {
+            // Can't shoot from safe zone
+            if (isPlayer && Math.hypot(player.x - safeZone.x, player.y - safeZone.y) < safeZone.radius) {
+                return;
+            }
+            const speed = isPlayer ? (pierce ? 12 : 5) : 2.5;
+            const weapon = isPlayer ? WEAPONS[player.weapon] : null;
+            const damage = weapon ? (weapon.damage || 20) : 10;
+            bullets.push({
+                x: x,
+                y: y,
+                vx: Math.cos(angle) * speed,
+                vy: Math.sin(angle) * speed,
+                isPlayer: isPlayer,
+                life: 200,
+                pierce: pierce,
+                damage: pierce ? damage * 2 : damage,
+                color: weapon ? weapon.color : COLORS.bullet
+            });
+
+            // Muzzle flash particles
+            for (let i = 0; i < 3; i++) {
+                particles.push({
+                    x: x + Math.cos(angle) * 10,
+                    y: y + Math.sin(angle) * 10,
+                    vx: Math.cos(angle + (Math.random() - 0.5)) * 2,
+                    vy: Math.sin(angle + (Math.random() - 0.5)) * 2,
+                    life: 10,
+                    color: '#ff0'
+                });
+            }
+        }
+
+        // Update enemies
+        function updateEnemies() {
+            if (gameState !== 'playing') return;
+
+            // Check if player is in safe zone
+            const playerInSafeZone = Math.hypot(player.x - safeZone.x, player.y - safeZone.y) < safeZone.radius;
+
+            for (let i = 0; i < enemies.length; i++) {
+                const enemy = enemies[i];
+                const dist = Math.hypot(player.x - enemy.x, player.y - enemy.y);
+
+                if (dist < enemy.alertDistance) {
+                    // Move towards player
+                    const angle = Math.atan2(player.y - enemy.y, player.x - enemy.x);
+                    const stopDist = enemy.canShoot ? 50 : 20;
+
+                    if (dist > stopDist) {
+                        let newX = enemy.x + Math.cos(angle) * enemy.speed;
+                        let newY = enemy.y + Math.sin(angle) * enemy.speed;
+                        const newDistToSafe = Math.hypot(newX - safeZone.x, newY - safeZone.y);
+
+                        // Don't enter safe zone
+                        if (newDistToSafe >= safeZone.radius) {
+                            // Check collision with other enemies
+                            for (let j = 0; j < enemies.length; j++) {
+                                if (i === j) continue;
+                                const other = enemies[j];
+                                const dx = newX - other.x;
+                                const dy = newY - other.y;
+                                const minDist = (enemy.width + other.width) / 2;
+                                const eDist = Math.hypot(dx, dy);
+                                if (eDist < minDist && eDist > 0) {
+                                    // Push apart
+                                    const push = (minDist - eDist) / 2;
+                                    newX += (dx / eDist) * push;
+                                    newY += (dy / eDist) * push;
+                                }
+                            }
+
+                            if (!pointInWalls(newX, enemy.y, enemy.width, enemy.height)) {
+                                enemy.x = newX;
+                            }
+                            if (!pointInWalls(enemy.x, newY, enemy.width, enemy.height)) {
+                                enemy.y = newY;
+                            }
+                        }
+                    }
+
+                    // Melee damage for chargers
+                    if (!enemy.canShoot && dist < 20 && !playerInSafeZone && enemy.shootCooldown <= 0) {
+                        player.health -= 15;
+                        enemy.shootCooldown = 30;
+                        if (player.health <= 0) gameState = 'gameover';
+                    }
+
+                    // Shoot at player (but not if player is in safe zone)
+                    if (enemy.canShoot && dist < enemy.shootDistance && enemy.shootCooldown <= 0 && !playerInSafeZone) {
+                        shoot(enemy.x, enemy.y, angle, false);
+                        enemy.shootCooldown = enemy.type === 'sniper' ? 90 : 60 + Math.random() * 30;
+                    }
+                }
+
+                if (enemy.shootCooldown > 0) enemy.shootCooldown--;
+            }
+        }
+
+        // Update bullets
+        function updateBullets() {
+            for (let i = bullets.length - 1; i >= 0; i--) {
+                const b = bullets[i];
+                b.x += b.vx;
+                b.y += b.vy;
+                b.life--;
+
+                // Wall collision
+                if (pointInWalls(b.x, b.y, 4, 4) || b.life <= 0) {
+                    // Impact particles
+                    for (let j = 0; j < 5; j++) {
+                        particles.push({
+                            x: b.x,
+                            y: b.y,
+                            vx: (Math.random() - 0.5) * 3,
+                            vy: (Math.random() - 0.5) * 3,
+                            life: 15,
+                            color: '#888'
+                        });
+                    }
+                    bullets.splice(i, 1);
+                    continue;
+                }
+
+                // Hit detection
+                if (b.isPlayer) {
+                    let hitSomething = false;
+                    for (let j = enemies.length - 1; j >= 0; j--) {
+                        const e = enemies[j];
+                        if (e.justHit) continue; // Skip if just hit by piercing bullet
+                        const dist = Math.hypot(b.x - e.x, b.y - e.y);
+                        if (dist < 12) {
+                            e.health -= b.damage || 20;
+                            if (b.pierce) {
+                                e.justHit = true;
+                                hitSomething = true;
+                            } else {
+                                bullets.splice(i, 1);
+                            }
+
+                            // Hit particles
+                            for (let k = 0; k < 8; k++) {
+                                particles.push({
+                                    x: e.x,
+                                    y: e.y,
+                                    vx: (Math.random() - 0.5) * 4,
+                                    vy: (Math.random() - 0.5) * 4,
+                                    life: 20,
+                                    color: COLORS.enemy
+                                });
+                            }
+
+                            if (e.health <= 0) {
+                                enemies.splice(j, 1);
+                                score += 100;
+
+                                // Death particles
+                                for (let k = 0; k < 15; k++) {
+                                    particles.push({
+                                        x: e.x,
+                                        y: e.y,
+                                        vx: (Math.random() - 0.5) * 6,
+                                        vy: (Math.random() - 0.5) * 6,
+                                        life: 30,
+                                        color: COLORS.enemy
+                                    });
+                                }
+
+                                // Drop pickup chance
+                                if (Math.random() < 0.4) {
+                                    let type;
+                                    const roll = Math.random();
+                                    // 30% chance for weapon drop
+                                    if (roll < 0.3) {
+                                        // Pick weapon based on level
+                                        const available = [];
+                                        if (level >= 1) available.push('smg');
+                                        if (level >= 2) available.push('shotgun');
+                                        if (level >= 2) available.push('rifle');
+                                        if (level >= 3) available.push('railgun');
+                                        if (level >= 4) available.push('minigun');
+                                        if (available.length > 0) {
+                                            type = available[Math.floor(Math.random() * available.length)];
+                                        } else {
+                                            type = 'ammo';
+                                        }
+                                    } else if (roll < 0.6) {
+                                        type = 'health';
+                                    } else {
+                                        type = 'ammo';
+                                    }
+                                    pickups.push({
+                                        x: e.x,
+                                        y: e.y,
+                                        type: type,
+                                        width: 12,
+                                        height: 12
+                                    });
+                                }
+                            }
+                            if (!b.pierce) break;
+                        }
+                    }
+                    // Clear justHit flags
+                    for (const e of enemies) e.justHit = false;
+                } else {
+                    const dist = Math.hypot(b.x - player.x, b.y - player.y);
+                    const playerInSafeZone = Math.hypot(player.x - safeZone.x, player.y - safeZone.y) < safeZone.radius;
+                    if (dist < 12 && !playerInSafeZone) {
+                        player.health -= 10;
+                        bullets.splice(i, 1);
+
+                        if (player.health <= 0) {
+                            gameState = 'gameover';
+                        }
+                    }
+                }
+            }
+        }
+
+        // Update particles
+        function updateParticles() {
+            for (let i = particles.length - 1; i >= 0; i--) {
+                const p = particles[i];
+                p.x += p.vx;
+                p.y += p.vy;
+                p.vx *= 0.95;
+                p.vy *= 0.95;
+                p.life--;
+
+                if (p.life <= 0) {
+                    particles.splice(i, 1);
+                }
+            }
+        }
+
+        // Check level complete
+        function checkLevelComplete() {
+            if (gameState === 'playing' && enemies.length === 0) {
+                gameState = 'levelcomplete';
+                setTimeout(() => {
+                    currentLevel++;
+                    generateLevel(currentLevel);
+                    gameState = 'playing';
+                }, 2000);
+            }
+        }
+
+        // Draw everything
+        function draw() {
+            // Clear with floor color
+            ctx.fillStyle = COLORS.floor;
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // Draw safe zone
+            ctx.beginPath();
+            ctx.arc(safeZone.x, safeZone.y, safeZone.radius, 0, Math.PI * 2);
+            ctx.fillStyle = 'rgba(78, 205, 196, 0.15)';
+            ctx.fill();
+            ctx.strokeStyle = 'rgba(78, 205, 196, 0.4)';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+
+            // Draw walls
+            for (const wall of walls) {
+                drawPixelRect(wall.x, wall.y, wall.w, wall.h, COLORS.wall, COLORS.wallDark);
+            }
+
+            // Draw pickups
+            for (const p of pickups) {
+                let color, label;
+                if (p.type === 'health') {
+                    color = COLORS.health;
+                    label = '+';
+                } else if (p.type === 'ammo') {
+                    color = COLORS.ammo;
+                    label = 'A';
+                } else if (WEAPONS[p.type]) {
+                    color = WEAPONS[p.type].color;
+                    label = WEAPONS[p.type].label;
+                } else {
+                    color = COLORS.ammo;
+                    label = '?';
+                }
+                ctx.fillStyle = color;
+                ctx.fillRect(p.x - p.width/2, p.y - p.height/2, p.width, p.height);
+                ctx.fillStyle = '#fff';
+                ctx.font = '10px monospace';
+                ctx.fillText(label, p.x - 3, p.y + 3);
+            }
+
+            // Draw enemies
+            for (const enemy of enemies) {
+                drawEnemy(enemy);
+            }
+
+            // Draw player
+            drawPlayer();
+
+            // Draw bullets
+            for (const b of bullets) {
+                ctx.fillStyle = b.color || COLORS.bullet;
+                const size = b.pierce ? 10 : 6;
+                ctx.fillRect(b.x - size/2, b.y - size/2, size, size);
+            }
+
+            // Draw particles
+            for (const p of particles) {
+                ctx.fillStyle = p.color;
+                ctx.globalAlpha = p.life / 30;
+                ctx.fillRect(p.x - 2, p.y - 2, 4, 4);
+            }
+            ctx.globalAlpha = 1;
+
+            // Draw game over / level complete
+            if (gameState === 'gameover') {
+                ctx.fillStyle = 'rgba(0,0,0,0.7)';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                ctx.fillStyle = '#e74c3c';
+                ctx.font = '48px monospace';
+                ctx.textAlign = 'center';
+                ctx.fillText('GAME OVER', canvas.width/2, canvas.height/2);
+                ctx.fillStyle = '#fff';
+                ctx.font = '20px monospace';
+                ctx.fillText(`Final Score: ${score}`, canvas.width/2, canvas.height/2 + 40);
+                ctx.fillText('Press SPACE to restart', canvas.width/2, canvas.height/2 + 80);
+                ctx.textAlign = 'left';
+            }
+
+            if (gameState === 'levelcomplete') {
+                ctx.fillStyle = 'rgba(0,0,0,0.5)';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                ctx.fillStyle = '#2ecc71';
+                ctx.font = '48px monospace';
+                ctx.textAlign = 'center';
+                ctx.fillText('BUILDING CLEARED!', canvas.width/2, canvas.height/2);
+                ctx.fillStyle = '#fff';
+                ctx.font = '20px monospace';
+                ctx.fillText(`Entering Building ${currentLevel + 1}...`, canvas.width/2, canvas.height/2 + 40);
+                ctx.textAlign = 'left';
+            }
+
+            // Player health bar on screen
+            ctx.fillStyle = '#333';
+            ctx.fillRect(20, 20, 104, 14);
+            ctx.fillStyle = player.health > 30 ? COLORS.health : '#e74c3c';
+            ctx.fillRect(22, 22, player.health, 10);
+        }
+
+        // Game loop
+        function gameLoop() {
+            updatePlayer();
+            updateEnemies();
+            updateBullets();
+            updateParticles();
+            checkLevelComplete();
+            draw();
+            requestAnimationFrame(gameLoop);
+        }
+
+        // Event listeners
+        document.addEventListener('keydown', (e) => {
+            keys[e.key] = true;
+            if (e.key === ' ' && gameState === 'gameover') {
+                score = 0;
+                currentLevel = 1;
+                player.weapon = 'pistol';
+                generateLevel(1);
+                gameState = 'playing';
+            }
+        });
+
+        document.addEventListener('keyup', (e) => {
+            keys[e.key] = false;
+        });
+
+        canvas.addEventListener('mousemove', (e) => {
+            const rect = canvas.getBoundingClientRect();
+            const scaleX = canvas.width / rect.width;
+            const scaleY = canvas.height / rect.height;
+            mouseX = (e.clientX - rect.left) * scaleX;
+            mouseY = (e.clientY - rect.top) * scaleY;
+        });
+
+        canvas.addEventListener('mousedown', () => mouseDown = true);
+        canvas.addEventListener('mouseup', () => mouseDown = false);
+        canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+
+        // Touch controls for mobile
+        let touchMove = { x: 0, y: 0 };
+        let touchAim = { x: 0, y: 0 };
+        let leftTouchId = null;
+        let rightTouchId = null;
+
+        if (isMobile) {
+            canvas.addEventListener('touchstart', (e) => {
+                e.preventDefault();
+                const rect = canvas.getBoundingClientRect();
+                const scaleX = canvas.width / rect.width;
+                const scaleY = canvas.height / rect.height;
+
+                for (const touch of e.changedTouches) {
+                    const tx = (touch.clientX - rect.left) * scaleX;
+                    const ty = (touch.clientY - rect.top) * scaleY;
+
+                    // Left half = movement, Right half = aim and shoot
+                    if (tx < W / 2) {
+                        leftTouchId = touch.identifier;
+                        touchMove.startX = tx;
+                        touchMove.startY = ty;
+                        touchMove.x = 0;
+                        touchMove.y = 0;
+                    } else {
+                        rightTouchId = touch.identifier;
+                        touchAim.x = tx;
+                        touchAim.y = ty;
+                        mouseX = tx;
+                        mouseY = ty;
+                        mouseDown = true;
+                    }
+                }
+
+                if (gameState === 'gameover') {
+                    score = 0;
+                    currentLevel = 1;
+                    player.weapon = 'pistol';
+                    generateLevel(1);
+                    gameState = 'playing';
+                }
+            });
+
+            canvas.addEventListener('touchmove', (e) => {
+                e.preventDefault();
+                const rect = canvas.getBoundingClientRect();
+                const scaleX = canvas.width / rect.width;
+                const scaleY = canvas.height / rect.height;
+
+                for (const touch of e.changedTouches) {
+                    const tx = (touch.clientX - rect.left) * scaleX;
+                    const ty = (touch.clientY - rect.top) * scaleY;
+
+                    if (touch.identifier === leftTouchId) {
+                        touchMove.x = (tx - touchMove.startX) / 30;
+                        touchMove.y = (ty - touchMove.startY) / 30;
+                        // Clamp
+                        const mag = Math.hypot(touchMove.x, touchMove.y);
+                        if (mag > 1) {
+                            touchMove.x /= mag;
+                            touchMove.y /= mag;
+                        }
+                    } else if (touch.identifier === rightTouchId) {
+                        mouseX = tx;
+                        mouseY = ty;
+                    }
+                }
+            });
+
+            canvas.addEventListener('touchend', (e) => {
+                e.preventDefault();
+                for (const touch of e.changedTouches) {
+                    if (touch.identifier === leftTouchId) {
+                        leftTouchId = null;
+                        touchMove.x = 0;
+                        touchMove.y = 0;
+                    } else if (touch.identifier === rightTouchId) {
+                        rightTouchId = null;
+                        mouseDown = false;
+                    }
+                }
+            });
+        }
+
+        // Start game
+        generateLevel(1);
+        gameLoop();
+    </script>
+</body>
+</html>
