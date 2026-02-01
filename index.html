@@ -119,8 +119,8 @@
             speed: 1.5,
             health: 100,
             maxHealth: 100,
-            ammo: 30,
-            maxAmmo: 30,
+            ammo: 12,
+            maxAmmo: 12,
             angle: 0,
             reloading: false,
             reloadTime: 0,
@@ -348,6 +348,20 @@
                 if (!pointInWalls(ax, ay, 12, 12)) {
                     pickups.push({ x: ax, y: ay, type: 'ammo', width: 12, height: 12 });
                     break;
+                }
+            }
+
+            // Spawn all weapons on the ground
+            const weaponsToSpawn = ['smg', 'shotgun', 'rifle', 'railgun', 'minigun'];
+            for (const weaponType of weaponsToSpawn) {
+                for (let i = 0; i < 100; i++) {
+                    const wx = 50 + Math.random() * (W - 100);
+                    const wy = 50 + Math.random() * (H - 100);
+                    const distToSpawn = Math.hypot(wx - player.x, wy - player.y);
+                    if (!pointInWalls(wx, wy, 16, 16) && distToSpawn > 80) {
+                        pickups.push({ x: wx, y: wy, type: weaponType, width: 16, height: 16 });
+                        break;
+                    }
                 }
             }
         }
@@ -805,25 +819,43 @@
 
             // Draw pickups
             for (const p of pickups) {
-                let color, label;
                 if (p.type === 'health') {
-                    color = COLORS.health;
-                    label = '+';
+                    // Health pickup - cross shape
+                    ctx.fillStyle = COLORS.health;
+                    ctx.fillRect(p.x - 2, p.y - 6, 4, 12);
+                    ctx.fillRect(p.x - 6, p.y - 2, 12, 4);
                 } else if (p.type === 'ammo') {
-                    color = COLORS.ammo;
-                    label = 'A';
+                    // Ammo pickup - bullet shape
+                    ctx.fillStyle = COLORS.ammo;
+                    ctx.fillRect(p.x - 3, p.y - 5, 6, 10);
+                    ctx.fillStyle = '#d4a017';
+                    ctx.fillRect(p.x - 3, p.y + 2, 6, 3);
                 } else if (WEAPONS[p.type]) {
-                    color = WEAPONS[p.type].color;
-                    label = WEAPONS[p.type].label;
-                } else {
-                    color = COLORS.ammo;
-                    label = '?';
+                    // Weapon pickup - gun shape with glow
+                    const weapon = WEAPONS[p.type];
+
+                    // Glow effect
+                    ctx.beginPath();
+                    ctx.arc(p.x, p.y, 12, 0, Math.PI * 2);
+                    ctx.fillStyle = weapon.color + '40';
+                    ctx.fill();
+
+                    // Gun body (horizontal rectangle)
+                    ctx.fillStyle = weapon.color;
+                    ctx.fillRect(p.x - 8, p.y - 3, 16, 6);
+
+                    // Gun handle
+                    ctx.fillRect(p.x - 2, p.y + 3, 5, 5);
+
+                    // Gun barrel highlight
+                    ctx.fillStyle = '#fff';
+                    ctx.fillRect(p.x + 4, p.y - 1, 4, 2);
+
+                    // Label
+                    ctx.fillStyle = '#fff';
+                    ctx.font = 'bold 8px monospace';
+                    ctx.fillText(weapon.label, p.x - 3, p.y + 1);
                 }
-                ctx.fillStyle = color;
-                ctx.fillRect(p.x - p.width/2, p.y - p.height/2, p.width, p.height);
-                ctx.fillStyle = '#fff';
-                ctx.font = '10px monospace';
-                ctx.fillText(label, p.x - 3, p.y + 3);
             }
 
             // Draw enemies
