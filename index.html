@@ -106,7 +106,7 @@
         const H = canvas.height;
 
         // Game state
-        let gameState = 'playing'; // playing, gameover, levelcomplete
+        let gameState = 'playing'; // playing, gameover, levelcomplete, paused
         let score = 0;
         let currentLevel = 1;
 
@@ -130,12 +130,12 @@
 
         // Weapon definitions
         const WEAPONS = {
-            pistol: { fireRate: 25, ammoUse: 1, color: '#f39c12', label: 'P' },
-            smg: { fireRate: 8, ammoUse: 1, color: '#3498db', label: 'M' },
-            shotgun: { fireRate: 45, ammoUse: 3, spread: 5, pellets: 5, color: '#e67e22', label: 'S' },
-            rifle: { fireRate: 20, ammoUse: 1, damage: 35, color: '#1abc9c', label: 'F' },
-            railgun: { fireRate: 70, ammoUse: 4, pierce: true, color: '#9b59b6', label: 'R' },
-            minigun: { fireRate: 4, ammoUse: 1, color: '#e74c3c', label: 'G' }
+            pistol: { fireRate: 25, ammoUse: 1, maxAmmo: 12, color: '#f39c12', label: 'P' },
+            smg: { fireRate: 8, ammoUse: 1, maxAmmo: 40, damage: 10, color: '#3498db', label: 'M' },
+            shotgun: { fireRate: 45, ammoUse: 3, maxAmmo: 18, spread: 5, pellets: 5, color: '#e67e22', label: 'S' },
+            rifle: { fireRate: 20, ammoUse: 1, maxAmmo: 20, damage: 35, color: '#1abc9c', label: 'F' },
+            railgun: { fireRate: 70, ammoUse: 4, maxAmmo: 16, pierce: true, color: '#9b59b6', label: 'R' },
+            minigun: { fireRate: 4, ammoUse: 1, maxAmmo: 100, damage: 12, color: '#e74c3c', label: 'G' }
         };
         const WEAPON_LIST = ['pistol', 'smg', 'shotgun', 'rifle', 'railgun', 'minigun'];
 
@@ -143,6 +143,7 @@
         const ENEMY_TYPES = {
             grunt: { color: '#e74c3c', colorDark: '#c0392b', speed: 1, health: 40, size: 14, shootDist: 120, canShoot: true },
             charger: { color: '#2ecc71', colorDark: '#27ae60', speed: 2.5, health: 25, size: 12, shootDist: 0, canShoot: false },
+            boss: { color: '#ff0000', colorDark: '#aa0000', speed: 0.5, health: 500, size: 40, shootDist: 200, canShoot: true },
             tank: { color: '#e67e22', colorDark: '#d35400', speed: 0.6, health: 120, size: 20, shootDist: 100, canShoot: true },
             sniper: { color: '#9b59b6', colorDark: '#8e44ad', speed: 0.8, health: 30, size: 12, shootDist: 250, canShoot: true }
         };
@@ -333,6 +334,33 @@
                 }
             }
 
+            // Spawn boss every 10 levels
+            if (levelNum % 10 === 0) {
+                const bossType = ENEMY_TYPES.boss;
+                for (let i = 0; i < 100; i++) {
+                    const bx = 50 + Math.random() * (W - 100);
+                    const by = 50 + Math.random() * (H - 100);
+                    const distToPlayer = Math.hypot(bx - player.x, by - player.y);
+                    if (!pointInWalls(bx, by, bossType.size, bossType.size) && distToPlayer > 150) {
+                        enemies.push({
+                            x: bx,
+                            y: by,
+                            type: 'boss',
+                            width: bossType.size,
+                            height: bossType.size,
+                            speed: bossType.speed,
+                            health: bossType.health + levelNum * 20,
+                            maxHealth: bossType.health + levelNum * 20,
+                            shootCooldown: 0,
+                            alertDistance: 400,
+                            shootDistance: bossType.shootDist,
+                            canShoot: bossType.canShoot
+                        });
+                        break;
+                    }
+                }
+            }
+
             // Spawn pickups at valid positions
             for (let i = 0; i < 50; i++) {
                 const hx = 40 + Math.random() * (W - 80);
@@ -351,16 +379,23 @@
                 }
             }
 
-            // Spawn all weapons on the ground
-            const weaponsToSpawn = ['smg', 'shotgun', 'rifle', 'railgun', 'minigun'];
-            for (const weaponType of weaponsToSpawn) {
-                for (let i = 0; i < 100; i++) {
-                    const wx = 50 + Math.random() * (W - 100);
-                    const wy = 50 + Math.random() * (H - 100);
-                    const distToSpawn = Math.hypot(wx - player.x, wy - player.y);
-                    if (!pointInWalls(wx, wy, 16, 16) && distToSpawn > 80) {
-                        pickups.push({ x: wx, y: wy, type: weaponType, width: 16, height: 16 });
-                        break;
+            // 40% chance to spawn 1 random weapon on the ground
+            if (Math.random() < 0.4) {
+                const available = [];
+                if (levelNum >= 1) available.push('smg');
+                if (levelNum >= 2) available.push('shotgun', 'rifle');
+                if (levelNum >= 3) available.push('railgun');
+                if (levelNum >= 4) available.push('minigun');
+                if (available.length > 0) {
+                    const weaponType = available[Math.floor(Math.random() * available.length)];
+                    for (let i = 0; i < 100; i++) {
+                        const wx = 50 + Math.random() * (W - 100);
+                        const wy = 50 + Math.random() * (H - 100);
+                        const distToSpawn = Math.hypot(wx - player.x, wy - player.y);
+                        if (!pointInWalls(wx, wy, 16, 16) && distToSpawn > 80) {
+                            pickups.push({ x: wx, y: wy, type: weaponType, width: 16, height: 16 });
+                            break;
+                        }
                     }
                 }
             }
@@ -522,19 +557,21 @@
                         player.health = Math.min(player.health + 30, player.maxHealth);
                     } else if (p.type === 'ammo') {
                         player.ammo = Math.min(player.ammo + 15, player.maxAmmo);
-                    } else if (WEAPONS[p.type]) {
+                    } else if (WEAPONS[p.type] && p.type !== player.weapon) {
                         // Drop current weapon if not pistol
-                        if (player.weapon !== 'pistol') {
+                        const oldWeapon = player.weapon;
+                        player.weapon = p.type;
+                        player.maxAmmo = WEAPONS[p.type].maxAmmo;
+                        player.ammo = player.maxAmmo;
+                        if (oldWeapon !== 'pistol') {
                             pickups.push({
-                                x: player.x + (Math.random() - 0.5) * 20,
-                                y: player.y + (Math.random() - 0.5) * 20,
-                                type: player.weapon,
-                                width: 12,
-                                height: 12
+                                x: p.x,
+                                y: p.y,
+                                type: oldWeapon,
+                                width: 16,
+                                height: 16
                             });
                         }
-                        player.weapon = p.type;
-                        player.ammo = player.maxAmmo;
                     }
                     pickups.splice(i, 1);
                 }
@@ -721,8 +758,8 @@
                                 if (Math.random() < 0.4) {
                                     let type;
                                     const roll = Math.random();
-                                    // 30% chance for weapon drop
-                                    if (roll < 0.3) {
+                                    // 8% chance for weapon drop
+                                    if (roll < 0.08) {
                                         // Pick weapon based on level
                                         const available = [];
                                         if (level >= 1) available.push('smg');
@@ -735,7 +772,7 @@
                                         } else {
                                             type = 'ammo';
                                         }
-                                    } else if (roll < 0.6) {
+                                    } else if (roll < 0.5) {
                                         type = 'health';
                                     } else {
                                         type = 'ammo';
@@ -896,6 +933,18 @@
                 ctx.textAlign = 'left';
             }
 
+            if (gameState === 'paused') {
+                ctx.fillStyle = 'rgba(0,0,0,0.5)';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                ctx.fillStyle = '#fff';
+                ctx.font = '48px monospace';
+                ctx.textAlign = 'center';
+                ctx.fillText('PAUSED', canvas.width/2, canvas.height/2);
+                ctx.font = '20px monospace';
+                ctx.fillText('Press ESC or P to resume', canvas.width/2, canvas.height/2 + 40);
+                ctx.textAlign = 'left';
+            }
+
             if (gameState === 'levelcomplete') {
                 ctx.fillStyle = 'rgba(0,0,0,0.5)';
                 ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -934,8 +983,12 @@
                 score = 0;
                 currentLevel = 1;
                 player.weapon = 'pistol';
+                player.maxAmmo = WEAPONS.pistol.maxAmmo;
                 generateLevel(1);
                 gameState = 'playing';
+            }
+            if ((e.key === 'Escape' || e.key === 'p') && (gameState === 'playing' || gameState === 'paused')) {
+                gameState = gameState === 'paused' ? 'playing' : 'paused';
             }
         });
 
@@ -993,6 +1046,7 @@
                     score = 0;
                     currentLevel = 1;
                     player.weapon = 'pistol';
+                    player.maxAmmo = WEAPONS.pistol.maxAmmo;
                     generateLevel(1);
                     gameState = 'playing';
                 }
