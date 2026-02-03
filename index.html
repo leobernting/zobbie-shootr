@@ -143,39 +143,39 @@
         // Enemy types per dungeon
         const DUNGEON_ENEMIES = {
             jungle: {
-                grunt: { name: 'Tribesman', color: '#5d8a3e', colorDark: '#4a7030', speed: 1, health: 40, size: 14, shootDist: 120, canShoot: true },
-                charger: { name: 'Jaguar', color: '#c9a227', colorDark: '#a68520', speed: 2.8, health: 25, size: 12, shootDist: 0, canShoot: false },
-                boss: { name: 'Shaman', color: '#2d5a27', colorDark: '#1e3d1a', speed: 0.5, health: 500, size: 40, shootDist: 200, canShoot: true },
-                tank: { name: 'Gorilla', color: '#4a4a4a', colorDark: '#333333', speed: 0.6, health: 130, size: 22, shootDist: 80, canShoot: true },
-                sniper: { name: 'Hunter', color: '#8b4513', colorDark: '#6b3510', speed: 0.8, health: 30, size: 12, shootDist: 250, canShoot: true }
+                grunt: { name: 'Tribesman', color: '#5d8a3e', colorDark: '#4a7030', speed: 1, health: 40, size: 18, shootDist: 120, canShoot: true },
+                charger: { name: 'Jaguar', color: '#c9a227', colorDark: '#a68520', speed: 2.0, health: 25, size: 16, shootDist: 0, canShoot: false },
+                boss: { name: 'Shaman', color: '#2d5a27', colorDark: '#1e3d1a', speed: 0.5, health: 500, size: 48, shootDist: 200, canShoot: true },
+                tank: { name: 'Gorilla', color: '#4a4a4a', colorDark: '#333333', speed: 0.6, health: 130, size: 28, shootDist: 80, canShoot: true },
+                sniper: { name: 'Hunter', color: '#8b4513', colorDark: '#6b3510', speed: 0.8, health: 30, size: 16, shootDist: 250, canShoot: true }
             },
             desert: {
-                grunt: { name: 'Mummy', color: '#c4a35a', colorDark: '#a68b4b', speed: 0.9, health: 50, size: 14, shootDist: 110, canShoot: true },
-                charger: { name: 'Scarab', color: '#1a1a2e', colorDark: '#0d0d17', speed: 3, health: 20, size: 10, shootDist: 0, canShoot: false },
-                boss: { name: 'Pharaoh', color: '#ffd700', colorDark: '#b8860b', speed: 0.4, health: 550, size: 42, shootDist: 220, canShoot: true },
-                tank: { name: 'Sand Golem', color: '#d4a574', colorDark: '#b8956a', speed: 0.5, health: 140, size: 24, shootDist: 90, canShoot: true },
-                sniper: { name: 'Desert Archer', color: '#8b7355', colorDark: '#6b5a45', speed: 0.9, health: 28, size: 12, shootDist: 270, canShoot: true }
+                grunt: { name: 'Mummy', color: '#c4a35a', colorDark: '#a68b4b', speed: 0.9, health: 50, size: 18, shootDist: 110, canShoot: true },
+                charger: { name: 'Scarab', color: '#1a1a2e', colorDark: '#0d0d17', speed: 2.2, health: 20, size: 14, shootDist: 0, canShoot: false },
+                boss: { name: 'Pharaoh', color: '#ffd700', colorDark: '#b8860b', speed: 0.4, health: 550, size: 50, shootDist: 220, canShoot: true },
+                tank: { name: 'Sand Golem', color: '#d4a574', colorDark: '#b8956a', speed: 0.5, health: 140, size: 30, shootDist: 90, canShoot: true },
+                sniper: { name: 'Desert Archer', color: '#8b7355', colorDark: '#6b5a45', speed: 0.9, health: 28, size: 16, shootDist: 270, canShoot: true }
             },
             ice: {
-                grunt: { name: 'Frost Knight', color: '#5a8fa8', colorDark: '#4a7a8f', speed: 0.9, health: 45, size: 15, shootDist: 120, canShoot: true },
-                charger: { name: 'Ice Wolf', color: '#a8c8d8', colorDark: '#8ab0c0', speed: 2.6, health: 28, size: 13, shootDist: 0, canShoot: false },
-                boss: { name: 'Frost Giant', color: '#4a90a8', colorDark: '#3a7088', speed: 0.4, health: 600, size: 45, shootDist: 180, canShoot: true },
-                tank: { name: 'Yeti', color: '#e8f0f0', colorDark: '#c8d8d8', speed: 0.55, health: 150, size: 24, shootDist: 100, canShoot: true },
-                sniper: { name: 'Ice Mage', color: '#87ceeb', colorDark: '#5f9ea0', speed: 0.7, health: 25, size: 12, shootDist: 280, canShoot: true }
+                grunt: { name: 'Frost Knight', color: '#5a8fa8', colorDark: '#4a7a8f', speed: 0.9, health: 45, size: 20, shootDist: 120, canShoot: true },
+                charger: { name: 'Ice Wolf', color: '#a8c8d8', colorDark: '#8ab0c0', speed: 1.9, health: 28, size: 18, shootDist: 0, canShoot: false },
+                boss: { name: 'Frost Giant', color: '#4a90a8', colorDark: '#3a7088', speed: 0.4, health: 600, size: 54, shootDist: 180, canShoot: true },
+                tank: { name: 'Yeti', color: '#e8f0f0', colorDark: '#c8d8d8', speed: 0.55, health: 150, size: 30, shootDist: 100, canShoot: true },
+                sniper: { name: 'Ice Mage', color: '#87ceeb', colorDark: '#5f9ea0', speed: 0.7, health: 25, size: 16, shootDist: 280, canShoot: true }
             },
             volcano: {
-                grunt: { name: 'Fire Imp', color: '#ff6b35', colorDark: '#cc5528', speed: 1.2, health: 35, size: 12, shootDist: 130, canShoot: true },
-                charger: { name: 'Hellhound', color: '#8b0000', colorDark: '#5c0000', speed: 2.9, health: 30, size: 14, shootDist: 0, canShoot: false },
-                boss: { name: 'Fire Dragon', color: '#ff4500', colorDark: '#cc3700', speed: 0.6, health: 650, size: 48, shootDist: 250, canShoot: true },
-                tank: { name: 'Lava Golem', color: '#ff8c00', colorDark: '#cc7000', speed: 0.45, health: 160, size: 26, shootDist: 90, canShoot: true },
-                sniper: { name: 'Fire Mage', color: '#ff1493', colorDark: '#cc1076', speed: 0.85, health: 28, size: 12, shootDist: 260, canShoot: true }
+                grunt: { name: 'Fire Imp', color: '#ff6b35', colorDark: '#cc5528', speed: 1.2, health: 35, size: 16, shootDist: 130, canShoot: true },
+                charger: { name: 'Hellhound', color: '#8b0000', colorDark: '#5c0000', speed: 2.1, health: 30, size: 18, shootDist: 0, canShoot: false },
+                boss: { name: 'Fire Dragon', color: '#ff4500', colorDark: '#cc3700', speed: 0.6, health: 650, size: 56, shootDist: 250, canShoot: true },
+                tank: { name: 'Lava Golem', color: '#ff8c00', colorDark: '#cc7000', speed: 0.45, health: 160, size: 32, shootDist: 90, canShoot: true },
+                sniper: { name: 'Fire Mage', color: '#ff1493', colorDark: '#cc1076', speed: 0.85, health: 28, size: 16, shootDist: 260, canShoot: true }
             },
             dungeon: {
-                grunt: { name: 'Guard', color: '#e74c3c', colorDark: '#c0392b', speed: 1, health: 40, size: 14, shootDist: 120, canShoot: true },
-                charger: { name: 'Goblin', color: '#2ecc71', colorDark: '#27ae60', speed: 2.5, health: 25, size: 12, shootDist: 0, canShoot: false },
-                boss: { name: 'Dark Knight', color: '#4a4a6a', colorDark: '#3a3a5a', speed: 0.5, health: 500, size: 40, shootDist: 200, canShoot: true },
-                tank: { name: 'Ogre', color: '#e67e22', colorDark: '#d35400', speed: 0.6, health: 120, size: 20, shootDist: 100, canShoot: true },
-                sniper: { name: 'Dark Mage', color: '#9b59b6', colorDark: '#8e44ad', speed: 0.8, health: 30, size: 12, shootDist: 250, canShoot: true }
+                grunt: { name: 'Guard', color: '#e74c3c', colorDark: '#c0392b', speed: 1, health: 40, size: 18, shootDist: 120, canShoot: true },
+                charger: { name: 'Goblin', color: '#2ecc71', colorDark: '#27ae60', speed: 1.8, health: 25, size: 16, shootDist: 0, canShoot: false },
+                boss: { name: 'Dark Knight', color: '#4a4a6a', colorDark: '#3a3a5a', speed: 0.5, health: 500, size: 48, shootDist: 200, canShoot: true },
+                tank: { name: 'Ogre', color: '#e67e22', colorDark: '#d35400', speed: 0.6, health: 120, size: 26, shootDist: 100, canShoot: true },
+                sniper: { name: 'Dark Mage', color: '#9b59b6', colorDark: '#8e44ad', speed: 0.8, health: 30, size: 16, shootDist: 250, canShoot: true }
             }
         };
 
