@@ -2517,7 +2517,7 @@
 
         // Game loop
         function gameLoop() {
-            // Sync primitives to G for extracted modules
+            // Sync state to G for extracted modules
             G.gameState = gameState;
             G.selectedDungeon = selectedDungeon;
             G.currentLevel = currentLevel;
@@ -2529,6 +2529,15 @@
             G.playerArmorTier = playerArmorTier;
             G.currentDamageMult = currentDamageMult;
             G.ENEMY_TYPES = ENEMY_TYPES;
+            // Re-sync arrays (generateLevel reassigns them to new arrays)
+            G.walls = walls;
+            G.enemies = enemies;
+            G.bullets = bullets;
+            G.particles = particles;
+            G.pickups = pickups;
+            G.bombs = bombs;
+            G.floorDecorations = floorDecorations;
+            G.levelProps = levelProps;
 
             updatePlayer();
             updateEnemies();
