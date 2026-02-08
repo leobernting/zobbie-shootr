@@ -885,6 +885,9 @@
             }
             walls.push(...roomConfigs[configIndex]);
 
+            // Sync walls to G so pointInWalls sees current level's walls
+            G.walls = walls;
+
             // Get dungeon difficulty settings
             const dungeonSettings = DUNGEONS[selectedDungeon] || DUNGEONS.dungeon;
             const countMult = dungeonSettings.enemyCountMult || 1;
