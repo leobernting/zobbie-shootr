@@ -5,6 +5,12 @@ function drawPlayer() {
     var player = G.player;
     var COLORS = G.COLORS;
 
+    // Counter-scale to maintain proportions under isometric Y-compression
+    ctx.save();
+    ctx.translate(player.x, player.y);
+    ctx.scale(1, 1 / G.ISO_SCALE);
+    ctx.translate(-player.x, -player.y);
+
     const px = Math.floor(player.x - player.width / 2);
     const py = Math.floor(player.y - player.height / 2);
 
@@ -223,6 +229,7 @@ function drawPlayer() {
     const eyeOffsetY = Math.sin(player.angle) * 3;
     ctx.fillRect(px + 4 + eyeOffsetX, py + 4 + eyeOffsetY, 3, 3);
     ctx.fillRect(px + 9 + eyeOffsetX, py + 4 + eyeOffsetY, 3, 3);
+    ctx.restore(); // end isometric counter-scale
 }
 
 // Draw remote player (P2) with different color
@@ -230,6 +237,12 @@ function drawRemotePlayer() {
     var ctx = G.ctx;
     var rp = G.remotePlayer;
     if (!rp || !rp.connected) return;
+
+    // Counter-scale to maintain proportions under isometric Y-compression
+    ctx.save();
+    ctx.translate(rp.x, rp.y);
+    ctx.scale(1, 1 / G.ISO_SCALE);
+    ctx.translate(-rp.x, -rp.y);
 
     // Use P2 colors
     const p2Color = PLAYER_COLORS.p2.main;
@@ -291,4 +304,5 @@ function drawRemotePlayer() {
         ctx.fillStyle = '#e74c3c';
         ctx.fillRect(barX, barY, barWidth * (rp.health / rp.maxHealth), barHeight);
     }
+    ctx.restore(); // end isometric counter-scale
 }

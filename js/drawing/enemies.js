@@ -9,6 +9,12 @@ function drawEnemy(enemy) {
     const type = G.ENEMY_TYPES[enemy.type] || G.ENEMY_TYPES.grunt;
     const s = enemy.width / 14; // Scale factor based on base size 14
 
+    // Counter-scale to maintain proportions under isometric Y-compression
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.scale(1, 1 / G.ISO_SCALE);
+    ctx.translate(-cx, -cy);
+
     ctx.save();
     ctx.translate(cx, cy);
 
@@ -410,4 +416,5 @@ function drawEnemy(enemy) {
     ctx.fillRect(ex, ey - 10, enemy.width, 4);
     ctx.fillStyle = COLORS.health;
     ctx.fillRect(ex, ey - 10, enemy.width * healthPercent, 4);
+    ctx.restore(); // end isometric counter-scale
 }

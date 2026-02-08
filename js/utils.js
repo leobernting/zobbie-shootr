@@ -4,6 +4,10 @@ function drawPixelRect(x, y, w, h, color, darkColor) {
     G.ctx.fillStyle = color;
     G.ctx.fillRect(Math.floor(x), Math.floor(y), w, h);
     if (darkColor) {
+        // Top highlight edge (2.5D light from above)
+        G.ctx.fillStyle = 'rgba(255,255,255,0.12)';
+        G.ctx.fillRect(Math.floor(x), Math.floor(y), w, 3);
+        // Dark bottom and right edges
         G.ctx.fillStyle = darkColor;
         G.ctx.fillRect(Math.floor(x), Math.floor(y) + h - 3, w, 3);
         G.ctx.fillRect(Math.floor(x) + w - 3, Math.floor(y), 3, h);
