@@ -1416,8 +1416,8 @@
                 player.y = newY;
             }
 
-            // Disable safe zone once player leaves it
-            if (safeZone.radius > 0 && Math.hypot(player.x - safeZone.x, player.y - safeZone.y) >= safeZone.radius) {
+            // Disable safe zone once player moves away from spawn center
+            if (safeZone.radius > 0 && Math.hypot(player.x - safeZone.x, player.y - safeZone.y) > 10) {
                 safeZone.radius = 0;
             }
 
