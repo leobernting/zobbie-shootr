@@ -2866,9 +2866,22 @@
             requestAnimationFrame(gameLoop);
         }
 
+        // Cheat code buffer
+        let cheatBuffer = '';
+        const CHEAT_SKIP = 'gg';
+
         // Event listeners
         document.addEventListener('keydown', (e) => {
             keys[e.key] = true;
+            // Cheat code detection
+            if (gameState === 'playing') {
+                cheatBuffer += e.key;
+                if (cheatBuffer.length > 10) cheatBuffer = cheatBuffer.slice(-10);
+                if (cheatBuffer.endsWith(CHEAT_SKIP)) {
+                    cheatBuffer = '';
+                    enemies.length = 0;
+                }
+            }
             if (e.key === ' ' && gameState === 'gameover') {
                 clearSavedRun();
                 resetRunState();
