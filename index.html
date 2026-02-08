@@ -915,14 +915,14 @@
                 const worldX = gx * gridSize + gridSize / 2;
                 const worldY = gy * gridSize + gridSize / 2;
 
-                // Check if this cell is walkable (not in a wall) - use small check size
-                if (!pointInWalls(worldX, worldY, 8, 8)) {
+                // Check if this cell is walkable - use player size so narrow gaps don't count
+                const pSize = Math.max(player.width, player.height);
+                if (!pointInWalls(worldX, worldY, pSize, pSize)) {
                     reachable[idx] = true;
 
-                    // Add neighbors to queue (including diagonals for better coverage)
+                    // Add cardinal neighbors only (no diagonals - prevents leaking through wall corners)
                     const neighbors = [
-                        [gx-1, gy], [gx+1, gy], [gx, gy-1], [gx, gy+1],
-                        [gx-1, gy-1], [gx+1, gy-1], [gx-1, gy+1], [gx+1, gy+1]
+                        [gx-1, gy], [gx+1, gy], [gx, gy-1], [gx, gy+1]
                     ];
                     for (const [nx, ny] of neighbors) {
                         if (nx >= 0 && nx < gridW && ny >= 0 && ny < gridH) {
