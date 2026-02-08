@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="sv">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Stöd Skaparen - Building Clearer</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            min-height: 100vh;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            color: #fff;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 20px;
+        }
+        .container {
+            max-width: 600px;
+            width: 100%;
+            text-align: center;
+        }
+        h1 {
+            color: #4ecdc4;
+            font-size: 2.5em;
+            margin-bottom: 10px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+        }
+        .subtitle {
+            color: #888;
+            font-size: 1.1em;
+            margin-bottom: 40px;
+        }
+        .swish-box {
+            background: rgba(255,255,255,0.1);
+            border-radius: 20px;
+            padding: 40px;
+            margin-bottom: 30px;
+            border: 2px solid #4ecdc4;
+        }
+        .swish-logo {
+            width: 150px;
+            margin-bottom: 20px;
+        }
+        .swish-number {
+            font-size: 2.5em;
+            font-weight: bold;
+            color: #4ecdc4;
+            letter-spacing: 3px;
+            margin: 20px 0;
+            padding: 15px;
+            background: rgba(0,0,0,0.3);
+            border-radius: 10px;
+            font-family: monospace;
+        }
+        .swish-label {
+            color: #aaa;
+            font-size: 1.1em;
+            margin-bottom: 10px;
+        }
+        .message-box {
+            background: rgba(78, 205, 196, 0.1);
+            border-radius: 15px;
+            padding: 30px;
+            margin-bottom: 30px;
+            border-left: 4px solid #4ecdc4;
+            text-align: left;
+        }
+        .message-box h2 {
+            color: #4ecdc4;
+            margin-bottom: 15px;
+            font-size: 1.4em;
+        }
+        .message-box p {
+            color: #ccc;
+            line-height: 1.8;
+            margin-bottom: 15px;
+        }
+        .message-box ul {
+            color: #ccc;
+            line-height: 2;
+            margin-left: 20px;
+        }
+        .message-box li {
+            margin-bottom: 8px;
+        }
+        .heart {
+            color: #e74c3c;
+            font-size: 1.2em;
+        }
+        .back-btn {
+            display: inline-block;
+            background: #4ecdc4;
+            color: #1a1a2e;
+            padding: 15px 40px;
+            border-radius: 30px;
+            text-decoration: none;
+            font-weight: bold;
+            font-size: 1.1em;
+            transition: all 0.3s ease;
+            margin-top: 20px;
+        }
+        .back-btn:hover {
+            background: #3dbdb5;
+            transform: scale(1.05);
+        }
+        .emoji {
+            font-size: 1.3em;
+        }
+        .thank-you {
+            margin-top: 40px;
+            padding: 20px;
+            background: rgba(46, 204, 113, 0.2);
+            border-radius: 15px;
+            border: 1px solid #2ecc71;
+        }
+        .thank-you h3 {
+            color: #2ecc71;
+            margin-bottom: 10px;
+        }
+        .copy-btn {
+            background: #9b59b6;
+            color: #fff;
+            border: none;
+            padding: 10px 25px;
+            border-radius: 20px;
+            cursor: pointer;
+            font-size: 1em;
+            margin-top: 15px;
+            transition: all 0.3s ease;
+        }
+        .copy-btn:hover {
+            background: #8e44ad;
+        }
+        .copy-btn.copied {
+            background: #2ecc71;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1><span class="emoji">🎮</span> Stöd Skaparen/GE MIG PENGAR!</h1>
+        <p class="subtitle">Hjälp oss göra Building Clearer ännu bättre!</p>
+
+        <div class="swish-box">
+            <img src="https://www.swish.nu/images/swish-logo.svg" alt="Swish" class="swish-logo"
+                 onerror="this.outerHTML='<div style=&quot;font-size:3em;color:#4ecdc4;margin-bottom:20px&quot;>💳 Swish</div>'">
+            <p class="swish-label">Swisha valfritt belopp till:</p>
+            <div class="swish-number" id="swish-num">070 667 60 12</div>
+            <button class="copy-btn" onclick="copyNumber()">📋 Kopiera nummer</button>
+        </div>
+
+        <div class="message-box">
+            <h2><span class="emoji">💡</span> Varför donera?</h2>
+            <p>
+                Hej! Jag är en ensam utvecklare som på något sätt skapar detta spel på min fritid.
+                Din donation hjälper mig att:
+            </p>
+            <ul>
+                
+                <li><span class="emoji">🎨</span> fixa bugs eller lägga till saker</li>
+                <li><span class="emoji">🔧</span> ps: GE MIG DINA PENGAR</li>
+        
+             
+            </ul>
+        </div>
+
+        <div class="message-box">
+            <h2><span class="emoji">📝</span> Har du idéer?</h2>
+            <p>
+                skicka dom till mig med typ 5kr och jag lägger nog till den för att du gav mig dina pengar.
+                <span class="heart">❤️</span>
+            </p>
+            <p>
+                <strong>Exempel på meddelanden:</strong><br>
+                "Lägg till fler vapen!" • "lägg till en häst för att du kan" • "Älskar spelet!"
+            </p>
+        </div>
+
+        <div class="thank-you">
+            <h3><span class="emoji">🙏</span> Tack så mycket!</h3>
+            <p>Varje krona gör skillnad och motiverar mig att fortsätta utveckla spelet och att spendera alla mina pengar på meningslösa saker .</p>
+        </div>
+
+        <a href="index.html" class="back-btn">← Tillbaka till spelet</a>
+    </div>
+
+    <script>
+        function copyNumber() {
+            const number = '0706676012';
+            navigator.clipboard.writeText(number).then(() => {
+                const btn = document.querySelector('.copy-btn');
+                btn.textContent = '✓ Kopierat!';
+                btn.classList.add('copied');
+                setTimeout(() => {
+                    btn.textContent = '📋 Kopiera nummer';
+                    btn.classList.remove('copied');
+                }, 2000);
+            });
+        }
+    </script>
+</body>
+</html>

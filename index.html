@@ -2280,6 +2280,22 @@
                     ctx.fillText('Lvl ' + savedRun.level, contBtnX + contBtnW/2, contBtnY + (isMobile ? 28 : 32));
                 }
 
+                // Donate button (top right, below coins)
+                const donateBtnW = isMobile ? 70 : 80;
+                const donateBtnH = isMobile ? 25 : 28;
+                const donateBtnX = canvas.width - donateBtnW - 10;
+                const donateBtnY = 35;
+                menuButtons.push({ x: donateBtnX, y: donateBtnY, w: donateBtnW, h: donateBtnH, action: 'donate' });
+
+                ctx.fillStyle = '#e74c3c';
+                ctx.fillRect(donateBtnX, donateBtnY, donateBtnW, donateBtnH);
+                ctx.fillStyle = '#c0392b';
+                ctx.fillRect(donateBtnX + 2, donateBtnY + 2, donateBtnW - 4, donateBtnH - 4);
+                ctx.fillStyle = '#fff';
+                ctx.font = isMobile ? '9px monospace' : '11px monospace';
+                ctx.textAlign = 'center';
+                ctx.fillText('❤ STÖD', donateBtnX + donateBtnW/2, donateBtnY + (isMobile ? 17 : 19));
+
                 ctx.fillStyle = '#666';
                 ctx.font = isMobile ? '10px monospace' : '14px monospace';
                 ctx.fillText(isMobile ? 'Tap dungeon for NEW run' : 'Click dungeon for NEW run (clears save)', canvas.width/2, canvas.height - 15);
@@ -2938,6 +2954,9 @@
                         if (btn.action === 'shop') {
                             gameState = 'shop';
                             break;
+                        } else if (btn.action === 'donate') {
+                            window.location.href = 'donate.html';
+                            break;
                         } else if (btn.action === 'continue') {
                             // Continue saved run
                             if (loadRun()) {
@@ -3037,6 +3056,9 @@
                                 ty >= btn.y && ty <= btn.y + btn.h) {
                                 if (btn.action === 'shop') {
                                     gameState = 'shop';
+                                    return;
+                                } else if (btn.action === 'donate') {
+                                    window.location.href = 'donate.html';
                                     return;
                                 } else if (btn.action === 'continue') {
                                     if (loadRun()) {
