@@ -85,6 +85,7 @@
         </div>
     </div>
 
+    <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
     <script src="js/state.js"></script>
     <script src="js/constants.js"></script>
     <script src="js/utils.js"></script>
@@ -178,6 +179,31 @@
         };
         let currentDamageMult = 1;
 
+        // Multiplayer state
+        let peer = null;
+        let conn = null;
+        let isHost = false;
+        let roomCode = '';
+        let roomCodeInput = '';
+        let multiplayerMode = null; // 'coop' or 'race'
+        let remotePlayer = {
+            x: 0, y: 0, angle: 0, health: 100, maxHealth: 100,
+            weapon: 'pistol', swinging: false, swingProgress: 0, connected: false
+        };
+        let remoteBullets = [];
+        let lastSyncTime = 0;
+        const SYNC_INTERVAL = 50; // ms between syncs
+
+        // Generate 4-character room code
+        function generateRoomCode() {
+            const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+            let code = '';
+            for (let i = 0; i < 4; i++) {
+                code += chars.charAt(Math.floor(Math.random() * chars.length));
+            }
+            return code;
+        }
+
         // Expose arrays/objects on G so extracted files can access them.
         G.bullets = bullets;
         G.enemies = enemies;
@@ -191,6 +217,7 @@
         G.COLORS = COLORS;
         G.playerCharms = playerCharms;
         G.runShopInventory = runShopInventory;
+        G.remotePlayer = remotePlayer;
 
         function saveProgress() {
             localStorage.setItem('coins', coins);
@@ -1202,7 +1229,7 @@
 
         // Update player
         function updatePlayer() {
-            if (gameState !== 'playing') return;
+            if (gameState !== 'playing' && gameState !== 'multiplayer-playing') return;
 
             // Regen Aura charm: heal 1 HP every 3 seconds (180 ticks at 60fps)
             if (playerCharms.includes('regen_aura')) {
@@ -1811,7 +1838,9 @@
 
         // Update enemies
         function updateEnemies() {
-            if (gameState !== 'playing') return;
+            if (gameState !== 'playing' && gameState !== 'multiplayer-playing') return;
+            // In multiplayer, only host updates enemies
+            if (gameState === 'multiplayer-playing' && !isHost) return;
 
             // Check if player is in safe zone
             const playerInSafeZone = Math.hypot(player.x - safeZone.x, player.y - safeZone.y) < safeZone.radius;
@@ -1861,7 +1890,7 @@
                     if (!enemy.canShoot && dist < 20 && !playerInSafeZone && enemy.shootCooldown <= 0) {
                         if (!godMode) player.health -= Math.floor(8 * currentDamageMult * (1 - playerArmor));
                         enemy.shootCooldown = 30;
-                        if (player.health <= 0) gameState = 'gameover';
+                        if (player.health <= 0) { cleanupMultiplayer(); gameState = 'gameover'; }
                     }
 
                     // Shoot at player (but not if player is in safe zone)
@@ -1907,7 +1936,7 @@
 
                         if (playerHit && !godMode) {
                             player.health -= Math.floor(zone.damage * (1 - playerArmor));
-                            if (player.health <= 0) gameState = 'gameover';
+                            if (player.health <= 0) { cleanupMultiplayer(); gameState = 'gameover'; }
                         }
                     }
 
@@ -2115,6 +2144,7 @@
                         bullets.splice(i, 1);
 
                         if (player.health <= 0) {
+                            cleanupMultiplayer();
                             gameState = 'gameover';
                         }
                     }
@@ -2151,6 +2181,19 @@
                     } else {
                         generateLevel(currentLevel);
                         gameState = 'playing';
+                    }
+                }, 2000);
+            }
+            // Multiplayer level complete - only host advances levels
+            if (gameState === 'multiplayer-playing' && enemies.length === 0 && isHost) {
+                gameState = 'levelcomplete';
+                setTimeout(() => {
+                    currentLevel++;
+                    generateLevel(currentLevel);
+                    gameState = 'multiplayer-playing';
+                    // Notify client of level change
+                    if (conn && conn.open) {
+                        conn.send({ type: 'level_complete', level: currentLevel });
                     }
                 }, 2000);
             }
@@ -2194,10 +2237,10 @@
                 const cols = isMobile ? 2 : 3;
                 const rows = Math.ceil(dungeonKeys.length / cols);
                 const btnW = isMobile ? 140 : 180;
-                const btnH = isMobile ? 80 : 100;
-                const gap = isMobile ? 15 : 20;
+                const btnH = isMobile ? 75 : 85;
+                const gap = isMobile ? 12 : 15;
                 const startX = (canvas.width - (cols * btnW + (cols - 1) * gap)) / 2;
-                const startY = isMobile ? 120 : 150;
+                const startY = isMobile ? 110 : 130;
 
                 menuButtons = [];
 
@@ -2222,28 +2265,44 @@
                     ctx.fillRect(x + 3, y + btnH - 12, btnW - 6, 9);
 
                     // Icon
-                    ctx.font = isMobile ? '24px monospace' : '32px monospace';
-                    ctx.fillText(dungeon.icon, x + btnW/2, y + (isMobile ? 28 : 35));
+                    ctx.font = isMobile ? '22px monospace' : '28px monospace';
+                    ctx.fillText(dungeon.icon, x + btnW/2, y + (isMobile ? 26 : 30));
 
                     // Name
                     ctx.fillStyle = '#fff';
-                    ctx.font = isMobile ? '9px monospace' : '11px monospace';
-                    ctx.fillText(dungeon.name, x + btnW/2, y + (isMobile ? 46 : 54));
+                    ctx.font = isMobile ? '9px monospace' : '10px monospace';
+                    ctx.fillText(dungeon.name, x + btnW/2, y + (isMobile ? 42 : 46));
 
                     // Difficulty stars
                     const diff = dungeon.difficulty || 1;
                     const starColors = ['#2ecc71', '#f1c40f', '#e67e22', '#e74c3c'];
                     ctx.fillStyle = starColors[diff - 1] || '#fff';
-                    ctx.font = isMobile ? '10px monospace' : '12px monospace';
+                    ctx.font = isMobile ? '10px monospace' : '11px monospace';
                     const stars = '★'.repeat(diff) + '☆'.repeat(4 - diff);
-                    ctx.fillText(stars, x + btnW/2, y + (isMobile ? 58 : 68));
+                    ctx.fillText(stars, x + btnW/2, y + (isMobile ? 54 : 58));
 
                     // Difficulty label
                     ctx.fillStyle = starColors[diff - 1] || '#fff';
                     ctx.font = isMobile ? '8px monospace' : '9px monospace';
                     const diffLabels = ['Easy', 'Medium', 'Hard', 'Extreme'];
-                    ctx.fillText(diffLabels[diff - 1] || 'Normal', x + btnW/2, y + (isMobile ? 68 : 80));
+                    ctx.fillText(diffLabels[diff - 1] || 'Normal', x + btnW/2, y + (isMobile ? 64 : 70));
                 }
+
+                // Multiplayer button (row above other buttons)
+                const mpBtnW = isMobile ? 140 : 160;
+                const mpBtnH = isMobile ? 30 : 35;
+                const mpBtnX = canvas.width/2 - mpBtnW/2;
+                const mpBtnY = canvas.height - (isMobile ? 105 : 115);
+                menuButtons.push({ x: mpBtnX, y: mpBtnY, w: mpBtnW, h: mpBtnH, action: 'multiplayer' });
+
+                ctx.fillStyle = '#8e44ad';
+                ctx.fillRect(mpBtnX, mpBtnY, mpBtnW, mpBtnH);
+                ctx.fillStyle = '#9b59b6';
+                ctx.fillRect(mpBtnX + 3, mpBtnY + 3, mpBtnW - 6, mpBtnH - 6);
+                ctx.fillStyle = '#fff';
+                ctx.font = isMobile ? '12px monospace' : '14px monospace';
+                ctx.textAlign = 'center';
+                ctx.fillText('MULTIPLAYER', mpBtnX + mpBtnW/2, mpBtnY + (isMobile ? 20 : 23));
 
                 // Shop button
                 const shopBtnW = isMobile ? 100 : 120;
@@ -2395,6 +2454,306 @@
             // Draw run shop screen
             if (gameState === 'runshop') {
                 drawRunShop();
+                return;
+            }
+
+            // Draw multiplayer menu screen
+            if (gameState === 'multiplayer-menu') {
+                ctx.fillStyle = '#1a1a2e';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+                // Title
+                ctx.fillStyle = '#9b59b6';
+                ctx.font = isMobile ? '24px monospace' : '36px monospace';
+                ctx.textAlign = 'center';
+                ctx.fillText('MULTIPLAYER', canvas.width/2, isMobile ? 80 : 100);
+
+                ctx.fillStyle = '#888';
+                ctx.font = isMobile ? '11px monospace' : '14px monospace';
+                ctx.fillText('Play with a friend!', canvas.width/2, isMobile ? 110 : 135);
+
+                menuButtons = [];
+
+                // Host button
+                const hostBtnW = isMobile ? 200 : 250;
+                const hostBtnH = isMobile ? 60 : 70;
+                const hostBtnX = canvas.width/2 - hostBtnW/2;
+                const hostBtnY = isMobile ? 160 : 180;
+                menuButtons.push({ x: hostBtnX, y: hostBtnY, w: hostBtnW, h: hostBtnH, action: 'mp_host' });
+
+                ctx.fillStyle = '#27ae60';
+                ctx.fillRect(hostBtnX, hostBtnY, hostBtnW, hostBtnH);
+                ctx.fillStyle = '#2ecc71';
+                ctx.fillRect(hostBtnX + 3, hostBtnY + 3, hostBtnW - 6, hostBtnH - 6);
+                ctx.fillStyle = '#1a1a2e';
+                ctx.font = isMobile ? '16px monospace' : '20px monospace';
+                ctx.fillText('HOST GAME', hostBtnX + hostBtnW/2, hostBtnY + (isMobile ? 28 : 32));
+                ctx.font = isMobile ? '10px monospace' : '12px monospace';
+                ctx.fillText('Create a room for others to join', hostBtnX + hostBtnW/2, hostBtnY + (isMobile ? 46 : 52));
+
+                // Join button
+                const joinBtnY = hostBtnY + hostBtnH + 20;
+                menuButtons.push({ x: hostBtnX, y: joinBtnY, w: hostBtnW, h: hostBtnH, action: 'mp_join' });
+
+                ctx.fillStyle = '#2980b9';
+                ctx.fillRect(hostBtnX, joinBtnY, hostBtnW, hostBtnH);
+                ctx.fillStyle = '#3498db';
+                ctx.fillRect(hostBtnX + 3, joinBtnY + 3, hostBtnW - 6, hostBtnH - 6);
+                ctx.fillStyle = '#1a1a2e';
+                ctx.font = isMobile ? '16px monospace' : '20px monospace';
+                ctx.fillText('JOIN GAME', hostBtnX + hostBtnW/2, joinBtnY + (isMobile ? 28 : 32));
+                ctx.font = isMobile ? '10px monospace' : '12px monospace';
+                ctx.fillText('Enter a room code to join', hostBtnX + hostBtnW/2, joinBtnY + (isMobile ? 46 : 52));
+
+                // Back button
+                const backBtnW = isMobile ? 80 : 100;
+                const backBtnH = isMobile ? 30 : 35;
+                const backBtnX = canvas.width/2 - backBtnW/2;
+                const backBtnY = canvas.height - (isMobile ? 50 : 60);
+                menuButtons.push({ x: backBtnX, y: backBtnY, w: backBtnW, h: backBtnH, action: 'back' });
+
+                ctx.fillStyle = '#e74c3c';
+                ctx.fillRect(backBtnX, backBtnY, backBtnW, backBtnH);
+                ctx.fillStyle = '#c0392b';
+                ctx.fillRect(backBtnX + 3, backBtnY + 3, backBtnW - 6, backBtnH - 6);
+                ctx.fillStyle = '#fff';
+                ctx.font = isMobile ? '12px monospace' : '14px monospace';
+                ctx.fillText('BACK', backBtnX + backBtnW/2, backBtnY + (isMobile ? 20 : 24));
+
+                ctx.textAlign = 'left';
+                return;
+            }
+
+            // Draw hosting screen (waiting for player)
+            if (gameState === 'hosting') {
+                ctx.fillStyle = '#1a1a2e';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+                ctx.fillStyle = '#2ecc71';
+                ctx.font = isMobile ? '20px monospace' : '28px monospace';
+                ctx.textAlign = 'center';
+                ctx.fillText('HOSTING GAME', canvas.width/2, isMobile ? 80 : 100);
+
+                ctx.fillStyle = '#888';
+                ctx.font = isMobile ? '12px monospace' : '16px monospace';
+                ctx.fillText('Share this code with your friend:', canvas.width/2, isMobile ? 130 : 160);
+
+                // Room code display
+                ctx.fillStyle = '#9b59b6';
+                ctx.font = isMobile ? '48px monospace' : '64px monospace';
+                ctx.fillText(roomCode, canvas.width/2, isMobile ? 200 : 240);
+
+                // Connection status
+                ctx.fillStyle = remotePlayer.connected ? '#2ecc71' : '#f39c12';
+                ctx.font = isMobile ? '14px monospace' : '18px monospace';
+                const statusText = remotePlayer.connected ? 'Player connected!' : 'Waiting for player...';
+                ctx.fillText(statusText, canvas.width/2, isMobile ? 260 : 310);
+
+                menuButtons = [];
+
+                // Cancel button
+                const cancelBtnW = isMobile ? 100 : 120;
+                const cancelBtnH = isMobile ? 35 : 40;
+                const cancelBtnX = canvas.width/2 - cancelBtnW/2;
+                const cancelBtnY = canvas.height - (isMobile ? 60 : 80);
+                menuButtons.push({ x: cancelBtnX, y: cancelBtnY, w: cancelBtnW, h: cancelBtnH, action: 'mp_cancel' });
+
+                ctx.fillStyle = '#e74c3c';
+                ctx.fillRect(cancelBtnX, cancelBtnY, cancelBtnW, cancelBtnH);
+                ctx.fillStyle = '#c0392b';
+                ctx.fillRect(cancelBtnX + 3, cancelBtnY + 3, cancelBtnW - 6, cancelBtnH - 6);
+                ctx.fillStyle = '#fff';
+                ctx.font = isMobile ? '12px monospace' : '16px monospace';
+                ctx.fillText('CANCEL', cancelBtnX + cancelBtnW/2, cancelBtnY + (isMobile ? 23 : 27));
+
+                // Start button (only if connected)
+                if (remotePlayer.connected) {
+                    const startBtnW = isMobile ? 140 : 160;
+                    const startBtnH = isMobile ? 45 : 50;
+                    const startBtnX = canvas.width/2 - startBtnW/2;
+                    const startBtnY = isMobile ? 300 : 360;
+                    menuButtons.push({ x: startBtnX, y: startBtnY, w: startBtnW, h: startBtnH, action: 'mp_mode_select' });
+
+                    ctx.fillStyle = '#27ae60';
+                    ctx.fillRect(startBtnX, startBtnY, startBtnW, startBtnH);
+                    ctx.fillStyle = '#2ecc71';
+                    ctx.fillRect(startBtnX + 3, startBtnY + 3, startBtnW - 6, startBtnH - 6);
+                    ctx.fillStyle = '#1a1a2e';
+                    ctx.font = isMobile ? '14px monospace' : '18px monospace';
+                    ctx.fillText('SELECT MODE', startBtnX + startBtnW/2, startBtnY + (isMobile ? 30 : 33));
+                }
+
+                ctx.textAlign = 'left';
+                return;
+            }
+
+            // Draw joining screen (enter code)
+            if (gameState === 'joining') {
+                ctx.fillStyle = '#1a1a2e';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+                ctx.fillStyle = '#3498db';
+                ctx.font = isMobile ? '20px monospace' : '28px monospace';
+                ctx.textAlign = 'center';
+                ctx.fillText('JOIN GAME', canvas.width/2, isMobile ? 80 : 100);
+
+                ctx.fillStyle = '#888';
+                ctx.font = isMobile ? '12px monospace' : '16px monospace';
+                ctx.fillText('Enter the room code:', canvas.width/2, isMobile ? 130 : 160);
+
+                // Code input box
+                const inputW = isMobile ? 180 : 220;
+                const inputH = isMobile ? 50 : 60;
+                const inputX = canvas.width/2 - inputW/2;
+                const inputY = isMobile ? 160 : 190;
+
+                ctx.fillStyle = '#333';
+                ctx.fillRect(inputX, inputY, inputW, inputH);
+                ctx.fillStyle = '#444';
+                ctx.fillRect(inputX + 3, inputY + 3, inputW - 6, inputH - 6);
+
+                ctx.fillStyle = '#fff';
+                ctx.font = isMobile ? '32px monospace' : '42px monospace';
+                ctx.fillText(roomCodeInput || '____', canvas.width/2, inputY + (isMobile ? 38 : 45));
+
+                // Instructions
+                ctx.fillStyle = '#666';
+                ctx.font = isMobile ? '10px monospace' : '12px monospace';
+                ctx.fillText('Type the 4-letter code', canvas.width/2, inputY + inputH + 20);
+
+                // Connection status
+                if (conn) {
+                    ctx.fillStyle = remotePlayer.connected ? '#2ecc71' : '#f39c12';
+                    ctx.font = isMobile ? '12px monospace' : '14px monospace';
+                    const statusText = remotePlayer.connected ? 'Connected! Waiting for host...' : 'Connecting...';
+                    ctx.fillText(statusText, canvas.width/2, inputY + inputH + 50);
+                }
+
+                menuButtons = [];
+
+                // Cancel button
+                const cancelBtnW = isMobile ? 100 : 120;
+                const cancelBtnH = isMobile ? 35 : 40;
+                const cancelBtnX = canvas.width/2 - cancelBtnW/2;
+                const cancelBtnY = canvas.height - (isMobile ? 60 : 80);
+                menuButtons.push({ x: cancelBtnX, y: cancelBtnY, w: cancelBtnW, h: cancelBtnH, action: 'mp_cancel' });
+
+                ctx.fillStyle = '#e74c3c';
+                ctx.fillRect(cancelBtnX, cancelBtnY, cancelBtnW, cancelBtnH);
+                ctx.fillStyle = '#c0392b';
+                ctx.fillRect(cancelBtnX + 3, cancelBtnY + 3, cancelBtnW - 6, cancelBtnH - 6);
+                ctx.fillStyle = '#fff';
+                ctx.font = isMobile ? '12px monospace' : '16px monospace';
+                ctx.fillText('CANCEL', cancelBtnX + cancelBtnW/2, cancelBtnY + (isMobile ? 23 : 27));
+
+                ctx.textAlign = 'left';
+                return;
+            }
+
+            // Draw mode select screen (host only)
+            if (gameState === 'mode-select') {
+                ctx.fillStyle = '#1a1a2e';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+                ctx.fillStyle = '#9b59b6';
+                ctx.font = isMobile ? '20px monospace' : '28px monospace';
+                ctx.textAlign = 'center';
+                ctx.fillText('SELECT MODE', canvas.width/2, isMobile ? 80 : 100);
+
+                ctx.fillStyle = '#888';
+                ctx.font = isMobile ? '11px monospace' : '14px monospace';
+                ctx.fillText('Choose how you want to play', canvas.width/2, isMobile ? 110 : 135);
+
+                menuButtons = [];
+
+                // Co-op button
+                const modeBtnW = isMobile ? 200 : 250;
+                const modeBtnH = isMobile ? 70 : 80;
+                const modeBtnX = canvas.width/2 - modeBtnW/2;
+                const coopBtnY = isMobile ? 140 : 170;
+                menuButtons.push({ x: modeBtnX, y: coopBtnY, w: modeBtnW, h: modeBtnH, action: 'mp_coop' });
+
+                ctx.fillStyle = '#27ae60';
+                ctx.fillRect(modeBtnX, coopBtnY, modeBtnW, modeBtnH);
+                ctx.fillStyle = '#2ecc71';
+                ctx.fillRect(modeBtnX + 3, coopBtnY + 3, modeBtnW - 6, modeBtnH - 6);
+                ctx.fillStyle = '#1a1a2e';
+                ctx.font = isMobile ? '18px monospace' : '22px monospace';
+                ctx.fillText('CO-OP', modeBtnX + modeBtnW/2, coopBtnY + (isMobile ? 30 : 35));
+                ctx.font = isMobile ? '9px monospace' : '11px monospace';
+                ctx.fillText('Team up to clear rooms', modeBtnX + modeBtnW/2, coopBtnY + (isMobile ? 48 : 55));
+                ctx.fillText('Shared enemies & progress', modeBtnX + modeBtnW/2, coopBtnY + (isMobile ? 62 : 70));
+
+                // Race button
+                const raceBtnY = coopBtnY + modeBtnH + 20;
+                menuButtons.push({ x: modeBtnX, y: raceBtnY, w: modeBtnW, h: modeBtnH, action: 'mp_race' });
+
+                ctx.fillStyle = '#e67e22';
+                ctx.fillRect(modeBtnX, raceBtnY, modeBtnW, modeBtnH);
+                ctx.fillStyle = '#f39c12';
+                ctx.fillRect(modeBtnX + 3, raceBtnY + 3, modeBtnW - 6, modeBtnH - 6);
+                ctx.fillStyle = '#1a1a2e';
+                ctx.font = isMobile ? '18px monospace' : '22px monospace';
+                ctx.fillText('RACE', modeBtnX + modeBtnW/2, raceBtnY + (isMobile ? 30 : 35));
+                ctx.font = isMobile ? '9px monospace' : '11px monospace';
+                ctx.fillText('Compete to clear rooms fastest', modeBtnX + modeBtnW/2, raceBtnY + (isMobile ? 48 : 55));
+                ctx.fillText('First to clear wins each room', modeBtnX + modeBtnW/2, raceBtnY + (isMobile ? 62 : 70));
+
+                // Back button
+                const backBtnW = isMobile ? 80 : 100;
+                const backBtnH = isMobile ? 30 : 35;
+                const backBtnX = canvas.width/2 - backBtnW/2;
+                const backBtnY = canvas.height - (isMobile ? 50 : 60);
+                menuButtons.push({ x: backBtnX, y: backBtnY, w: backBtnW, h: backBtnH, action: 'mp_cancel' });
+
+                ctx.fillStyle = '#e74c3c';
+                ctx.fillRect(backBtnX, backBtnY, backBtnW, backBtnH);
+                ctx.fillStyle = '#c0392b';
+                ctx.fillRect(backBtnX + 3, backBtnY + 3, backBtnW - 6, backBtnH - 6);
+                ctx.fillStyle = '#fff';
+                ctx.font = isMobile ? '12px monospace' : '14px monospace';
+                ctx.fillText('BACK', backBtnX + backBtnW/2, backBtnY + (isMobile ? 20 : 24));
+
+                ctx.textAlign = 'left';
+                return;
+            }
+
+            // Draw waiting for host screen (client waiting for mode select)
+            if (gameState === 'waiting-for-host') {
+                ctx.fillStyle = '#1a1a2e';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+                ctx.fillStyle = '#3498db';
+                ctx.font = isMobile ? '20px monospace' : '28px monospace';
+                ctx.textAlign = 'center';
+                ctx.fillText('CONNECTED!', canvas.width/2, isMobile ? 100 : 120);
+
+                ctx.fillStyle = '#888';
+                ctx.font = isMobile ? '14px monospace' : '18px monospace';
+                ctx.fillText('Waiting for host to select mode...', canvas.width/2, isMobile ? 200 : 240);
+
+                // Animated dots
+                const dots = '.'.repeat((Math.floor(Date.now() / 500) % 4));
+                ctx.fillText(dots, canvas.width/2, isMobile ? 230 : 280);
+
+                menuButtons = [];
+
+                // Cancel button
+                const cancelBtnW = isMobile ? 100 : 120;
+                const cancelBtnH = isMobile ? 35 : 40;
+                const cancelBtnX = canvas.width/2 - cancelBtnW/2;
+                const cancelBtnY = canvas.height - (isMobile ? 60 : 80);
+                menuButtons.push({ x: cancelBtnX, y: cancelBtnY, w: cancelBtnW, h: cancelBtnH, action: 'mp_cancel' });
+
+                ctx.fillStyle = '#e74c3c';
+                ctx.fillRect(cancelBtnX, cancelBtnY, cancelBtnW, cancelBtnH);
+                ctx.fillStyle = '#c0392b';
+                ctx.fillRect(cancelBtnX + 3, cancelBtnY + 3, cancelBtnW - 6, cancelBtnH - 6);
+                ctx.fillStyle = '#fff';
+                ctx.font = isMobile ? '12px monospace' : '16px monospace';
+                ctx.fillText('LEAVE', cancelBtnX + cancelBtnW/2, cancelBtnY + (isMobile ? 23 : 27));
+
+                ctx.textAlign = 'left';
                 return;
             }
 
@@ -2664,6 +3023,11 @@
             // Draw player
             drawPlayer();
 
+            // Draw remote player in multiplayer
+            if (gameState === 'multiplayer-playing' && remotePlayer.connected) {
+                drawRemotePlayer();
+            }
+
             // Draw bullets
             for (const b of bullets) {
                 if (b.flame) {
@@ -2766,11 +3130,24 @@
             ctx.fillRect(22, 22, (player.health / player.maxHealth) * 100, 10);
 
             // Scrap counter on screen (below health bar)
-            if (gameState === 'playing') {
+            if (gameState === 'playing' || gameState === 'multiplayer-playing') {
                 ctx.fillStyle = '#95a5a6';
                 ctx.font = '10px monospace';
                 ctx.textAlign = 'left';
                 ctx.fillText('S:' + scrap, 20, 48);
+
+                // Multiplayer mode indicator
+                if (gameState === 'multiplayer-playing') {
+                    ctx.fillStyle = '#9b59b6';
+                    ctx.font = '10px monospace';
+                    ctx.textAlign = 'right';
+                    const modeLabel = multiplayerMode === 'coop' ? 'CO-OP' : 'RACE';
+                    ctx.fillText(modeLabel + (isHost ? ' (Host)' : ''), canvas.width - 20, 48);
+                    // Connection status
+                    ctx.fillStyle = remotePlayer.connected ? '#2ecc71' : '#e74c3c';
+                    ctx.fillText(remotePlayer.connected ? 'P2 Connected' : 'P2 Disconnected', canvas.width - 20, 60);
+                    ctx.textAlign = 'left';
+                }
 
                 // Charm icons
                 for (let ci = 0; ci < playerCharms.length; ci++) {
@@ -2838,6 +3215,231 @@
             }
         }
 
+        // Multiplayer connection functions
+        function initializePeer() {
+            if (peer) {
+                peer.destroy();
+            }
+            peer = new Peer();
+            peer.on('error', (err) => {
+                console.error('Peer error:', err);
+                if (err.type === 'peer-unavailable') {
+                    alert('Room not found. Check the code and try again.');
+                }
+            });
+            return peer;
+        }
+
+        function hostGame() {
+            roomCode = generateRoomCode();
+            // Create peer with room code as the ID so others can connect to it
+            if (peer) {
+                peer.destroy();
+            }
+            peer = new Peer(roomCode.toLowerCase());
+            peer.on('error', (err) => {
+                console.error('Peer error:', err);
+                if (err.type === 'unavailable-id') {
+                    // Room code already taken, generate a new one
+                    roomCode = generateRoomCode();
+                    hostGame();
+                }
+            });
+            peer.on('open', (id) => {
+                console.log('Hosting as:', roomCode, 'Peer ID:', id);
+                isHost = true;
+                gameState = 'hosting';
+            });
+            peer.on('connection', (connection) => {
+                conn = connection;
+                setupConnection(conn);
+            });
+        }
+
+        function joinGame(code) {
+            initializePeer();
+            peer.on('open', (id) => {
+                console.log('Joining room:', code);
+                isHost = false;
+                conn = peer.connect(code.toLowerCase());
+                setupConnection(conn);
+            });
+        }
+
+        function setupConnection(connection) {
+            connection.on('open', () => {
+                console.log('Connection established!');
+                remotePlayer.connected = true;
+                if (!isHost) {
+                    gameState = 'waiting-for-host';
+                }
+            });
+            connection.on('data', (data) => {
+                handleNetworkData(data);
+            });
+            connection.on('close', () => {
+                console.log('Connection closed');
+                remotePlayer.connected = false;
+                if (gameState === 'multiplayer-playing') {
+                    alert('Other player disconnected!');
+                    cleanupMultiplayer();
+                    gameState = 'menu';
+                }
+            });
+        }
+
+        function handleNetworkData(data) {
+            if (data.type === 'player_state') {
+                remotePlayer.x = data.x;
+                remotePlayer.y = data.y;
+                remotePlayer.angle = data.angle;
+                remotePlayer.health = data.health;
+                remotePlayer.maxHealth = data.maxHealth;
+                remotePlayer.weapon = data.weapon;
+                remotePlayer.swinging = data.swinging;
+                remotePlayer.swingProgress = data.swingProgress;
+            } else if (data.type === 'bullets') {
+                remoteBullets = data.bullets;
+            } else if (data.type === 'mode_selected') {
+                multiplayerMode = data.mode;
+                startMultiplayerGame(data.dungeon);
+            } else if (data.type === 'game_state') {
+                // Sync game state from host
+                if (!isHost) {
+                    enemies = data.enemies || enemies;
+                    G.enemies = enemies;
+                }
+            } else if (data.type === 'level_complete') {
+                // Handle level completion sync
+                if (!isHost) {
+                    currentLevel = data.level;
+                    generateLevel(currentLevel);
+                }
+            }
+        }
+
+        function sendPlayerState() {
+            if (conn && conn.open) {
+                conn.send({
+                    type: 'player_state',
+                    x: player.x,
+                    y: player.y,
+                    angle: player.angle,
+                    health: player.health,
+                    maxHealth: player.maxHealth,
+                    weapon: player.weapon,
+                    swinging: player.swinging,
+                    swingProgress: player.swingProgress
+                });
+            }
+        }
+
+        function sendBullets() {
+            if (conn && conn.open && isHost) {
+                conn.send({
+                    type: 'bullets',
+                    bullets: bullets.map(b => ({
+                        x: b.x, y: b.y, vx: b.vx, vy: b.vy,
+                        isPlayer: b.isPlayer, color: b.color
+                    }))
+                });
+            }
+        }
+
+        function sendGameState() {
+            if (conn && conn.open && isHost) {
+                conn.send({
+                    type: 'game_state',
+                    enemies: enemies.map(e => ({
+                        x: e.x, y: e.y, health: e.health, maxHealth: e.maxHealth,
+                        type: e.type, width: e.width, height: e.height
+                    }))
+                });
+            }
+        }
+
+        function startMultiplayerGame(dungeonKey) {
+            clearSavedRun();
+            resetRunState();
+            applyDungeonTheme(dungeonKey);
+            score = 0;
+            currentLevel = 1;
+            // Apply class bonuses
+            const cls = CLASSES[selectedClass] || CLASSES.default;
+            player.weapon = cls.weapon;
+            player.maxHealth = cls.health;
+            player.health = cls.health;
+            player.speed = cls.speed;
+            const weaponData = WEAPONS[cls.weapon];
+            if (weaponData.melee || weaponData.placeable) {
+                player.maxAmmo = weaponData.maxAmmo || 0;
+                player.ammo = player.maxAmmo;
+            } else {
+                player.maxAmmo = weaponData.maxAmmo;
+                player.ammo = player.maxAmmo;
+            }
+            generateLevel(1);
+            gameState = 'multiplayer-playing';
+        }
+
+        function cleanupMultiplayer() {
+            if (conn) {
+                conn.close();
+                conn = null;
+            }
+            if (peer) {
+                peer.destroy();
+                peer = null;
+            }
+            isHost = false;
+            roomCode = '';
+            roomCodeInput = '';
+            multiplayerMode = null;
+            remotePlayer.connected = false;
+        }
+
+        function handleMultiplayerMenuClick(clickX, clickY) {
+            for (const btn of menuButtons) {
+                if (clickX >= btn.x && clickX <= btn.x + btn.w &&
+                    clickY >= btn.y && clickY <= btn.y + btn.h) {
+                    if (btn.action === 'back') {
+                        gameState = 'menu';
+                        return;
+                    } else if (btn.action === 'mp_host') {
+                        hostGame();
+                        return;
+                    } else if (btn.action === 'mp_join') {
+                        gameState = 'joining';
+                        roomCodeInput = '';
+                        return;
+                    } else if (btn.action === 'mp_cancel') {
+                        cleanupMultiplayer();
+                        gameState = 'menu';
+                        return;
+                    } else if (btn.action === 'mp_mode_select') {
+                        gameState = 'mode-select';
+                        return;
+                    } else if (btn.action === 'mp_coop') {
+                        multiplayerMode = 'coop';
+                        // Send mode selection to client with default dungeon
+                        if (conn && conn.open) {
+                            conn.send({ type: 'mode_selected', mode: 'coop', dungeon: 'jungle' });
+                        }
+                        startMultiplayerGame('jungle');
+                        return;
+                    } else if (btn.action === 'mp_race') {
+                        multiplayerMode = 'race';
+                        // Send mode selection to client with default dungeon
+                        if (conn && conn.open) {
+                            conn.send({ type: 'mode_selected', mode: 'race', dungeon: 'jungle' });
+                        }
+                        startMultiplayerGame('jungle');
+                        return;
+                    }
+                }
+            }
+        }
+
         // Game loop
         function gameLoop() {
             // Sync state to G for extracted modules
@@ -2861,6 +3463,20 @@
             G.bombs = bombs;
             G.floorDecorations = floorDecorations;
             G.levelProps = levelProps;
+            G.remotePlayer = remotePlayer;
+
+            // Handle multiplayer sync
+            if (gameState === 'multiplayer-playing' && conn && conn.open) {
+                const now = Date.now();
+                if (now - lastSyncTime >= SYNC_INTERVAL) {
+                    lastSyncTime = now;
+                    sendPlayerState();
+                    if (isHost) {
+                        sendGameState();
+                        sendBullets();
+                    }
+                }
+            }
 
             updatePlayer();
             updateEnemies();
@@ -2882,11 +3498,33 @@
         // Event listeners
         document.addEventListener('keydown', (e) => {
             keys[e.key] = true;
+
+            // Handle room code input when joining
+            if (gameState === 'joining') {
+                if (e.key === 'Backspace') {
+                    roomCodeInput = roomCodeInput.slice(0, -1);
+                    return;
+                } else if (e.key === 'Escape') {
+                    cleanupMultiplayer();
+                    gameState = 'menu';
+                    return;
+                } else if (e.key.length === 1 && /[a-zA-Z0-9]/.test(e.key)) {
+                    if (roomCodeInput.length < 4) {
+                        roomCodeInput += e.key.toUpperCase();
+                        // Auto-connect when 4 characters entered
+                        if (roomCodeInput.length === 4) {
+                            joinGame(roomCodeInput);
+                        }
+                    }
+                    return;
+                }
+            }
+
             // Cheat code detection - works in all states
             cheatBuffer += e.key.toLowerCase();
             if (cheatBuffer.length > 10) cheatBuffer = cheatBuffer.slice(-10);
             console.log('Key pressed:', e.key, 'Buffer:', cheatBuffer, 'State:', gameState);
-            if (cheatBuffer.endsWith(CHEAT_SKIP) && gameState === 'playing') {
+            if (cheatBuffer.endsWith(CHEAT_SKIP) && (gameState === 'playing' || gameState === 'multiplayer-playing')) {
                 cheatBuffer = '';
                 enemies.length = 0;
                 console.log('CHEAT: Enemies cleared!');
@@ -2906,8 +3544,14 @@
                 resetRunState();
                 gameState = 'menu';
             }
-            if ((e.key === 'Escape' || e.key === 'p') && (gameState === 'playing' || gameState === 'paused')) {
-                gameState = gameState === 'paused' ? 'playing' : 'paused';
+            if ((e.key === 'Escape' || e.key === 'p') && (gameState === 'playing' || gameState === 'paused' || gameState === 'multiplayer-playing')) {
+                if (gameState === 'multiplayer-playing') {
+                    // In multiplayer, escape disconnects
+                    cleanupMultiplayer();
+                    gameState = 'menu';
+                } else {
+                    gameState = gameState === 'paused' ? 'playing' : 'paused';
+                }
             }
         });
 
@@ -2937,6 +3581,9 @@
                         clickY >= btn.y && clickY <= btn.y + btn.h) {
                         if (btn.action === 'shop') {
                             gameState = 'shop';
+                            break;
+                        } else if (btn.action === 'multiplayer') {
+                            gameState = 'multiplayer-menu';
                             break;
                         } else if (btn.action === 'continue') {
                             // Continue saved run
@@ -2971,6 +3618,8 @@
                         }
                     }
                 }
+            } else if (gameState === 'multiplayer-menu' || gameState === 'hosting' || gameState === 'joining' || gameState === 'mode-select' || gameState === 'waiting-for-host') {
+                handleMultiplayerMenuClick(clickX, clickY);
             } else if (gameState === 'paused') {
                 for (const btn of menuButtons) {
                     if (clickX >= btn.x && clickX <= btn.x + btn.w &&
@@ -3038,6 +3687,9 @@
                                 if (btn.action === 'shop') {
                                     gameState = 'shop';
                                     return;
+                                } else if (btn.action === 'multiplayer') {
+                                    gameState = 'multiplayer-menu';
+                                    return;
                                 } else if (btn.action === 'continue') {
                                     if (loadRun()) {
                                         gameState = 'playing';
@@ -3069,6 +3721,12 @@
                                 }
                             }
                         }
+                        return;
+                    }
+
+                    // Handle multiplayer menu selection
+                    if (gameState === 'multiplayer-menu' || gameState === 'hosting' || gameState === 'joining' || gameState === 'mode-select' || gameState === 'waiting-for-host') {
+                        handleMultiplayerMenuClick(tx, ty);
                         return;
                     }
 

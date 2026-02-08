@@ -1,5 +1,11 @@
 // Pure data constants — no logic, no side effects.
 
+// Multiplayer player colors
+const PLAYER_COLORS = {
+    p1: { main: '#4ecdc4', dark: '#2ea8a0' },
+    p2: { main: '#e74c3c', dark: '#c0392b' }
+};
+
 const CLASSES = {
     default: { name: 'Rookie', description: 'No bonuses', price: 0, weapon: 'pistol', health: 100, speed: 1.5, ammoBonus: 0 },
     soldier: { name: 'Soldier', description: 'Start with SMG', price: 100, weapon: 'smg', health: 100, speed: 1.5, ammoBonus: 0 },
