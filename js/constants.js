@@ -24,7 +24,7 @@ const WEAPONS = {
     sniper: { fireRate: 90, ammoUse: 1, maxAmmo: 8, damage: 150, color: '#2c3e50', label: 'N' },
     flamethrower: { fireRate: 5, ammoUse: 1, maxAmmo: 80, damage: 3, flame: true, color: '#ff4500', label: 'T' },
     rocketlauncher: { fireRate: 80, ammoUse: 1, maxAmmo: 6, damage: 80, explosive: true, explosionRadius: 60, color: '#556b2f', label: 'L' },
-    bomb: { fireRate: 60, ammoUse: 1, maxAmmo: 3, damage: 150, explosionRadius: 100, placeable: true, fuseTime: 180, color: '#1a1a1a', label: 'B' }
+    bomb: { fireRate: 60, ammoUse: 1, maxAmmo: 5, damage: 150, explosionRadius: 100, placeable: true, fuseTime: 180, color: '#1a1a1a', label: 'B' }
 };
 
 const WEAPON_LIST = ['pistol', 'smg', 'shotgun', 'rifle', 'railgun', 'minigun', 'sword', 'katana', 'sniper', 'flamethrower', 'rocketlauncher', 'bomb'];
