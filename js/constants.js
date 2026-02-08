@@ -7,15 +7,15 @@ const PLAYER_COLORS = {
 };
 
 const CLASSES = {
-    default: { name: 'Rookie', description: 'No bonuses', price: 0, weapon: 'pistol', health: 100, speed: 1.5, ammoBonus: 0 },
-    soldier: { name: 'Soldier', description: 'Start with SMG', price: 100, weapon: 'smg', health: 100, speed: 1.5, ammoBonus: 0 },
-    tank: { name: 'Tank', description: '+50 Health, slower', price: 150, weapon: 'pistol', health: 150, speed: 1.2, ammoBonus: 0 },
-    scout: { name: 'Scout', description: 'Faster movement', price: 120, weapon: 'pistol', health: 80, speed: 2.0, ammoBonus: 0 },
-    gunner: { name: 'Gunner', description: 'Start with Shotgun', price: 200, weapon: 'shotgun', health: 100, speed: 1.4, ammoBonus: 0 },
-    sniper: { name: 'Marksman', description: 'Start with Sniper', price: 300, weapon: 'sniper', health: 90, speed: 1.5, ammoBonus: 0 },
-    pyro: { name: 'Pyro', description: 'Start with Flamethrower', price: 350, weapon: 'flamethrower', health: 100, speed: 1.5, ammoBonus: 0 },
-    demoman: { name: 'Demoman', description: 'Start with Bombs', price: 400, weapon: 'bomb', health: 110, speed: 1.3, ammoBonus: 0 },
-    samurai: { name: 'Samurai', description: 'Start with Katana', price: 250, weapon: 'katana', health: 90, speed: 1.7, ammoBonus: 0 }
+    default: { name: 'Rookie', description: 'No bonuses', price: 0, weapon: 'pistol', health: 100, speed: 1.5, ammoBonus: 0, color: '#4ecdc4', colorDark: '#2ea8a0', unlockType: 'default', unlockDesc: 'Starter' },
+    soldier: { name: 'Soldier', description: 'Start with SMG', price: 100, weapon: 'smg', health: 100, speed: 1.5, ammoBonus: 0, color: '#3498db', colorDark: '#2476b0', unlockType: 'boss:1', unlockDesc: 'Defeat a boss' },
+    tank: { name: 'Tank', description: '+50 Health, slower', price: 150, weapon: 'pistol', health: 150, speed: 1.2, ammoBonus: 0, color: '#95a5a6', colorDark: '#7f8c8d', unlockType: 'level:10', unlockDesc: 'Reach level 10' },
+    scout: { name: 'Scout', description: 'Faster movement', price: 120, weapon: 'pistol', health: 80, speed: 2.0, ammoBonus: 0, color: '#2ecc71', colorDark: '#27ae60', unlockType: 'default', unlockDesc: 'Starter' },
+    gunner: { name: 'Gunner', description: 'Start with Shotgun', price: 200, weapon: 'shotgun', health: 100, speed: 1.4, ammoBonus: 0, color: '#e67e22', colorDark: '#d35400', unlockType: 'level:15', unlockDesc: 'Reach level 15' },
+    sniper: { name: 'Marksman', description: 'Start with Sniper', price: 300, weapon: 'sniper', health: 90, speed: 1.5, ammoBonus: 0, color: '#2c3e50', colorDark: '#1a252f', unlockType: 'level:25', unlockDesc: 'Reach level 25' },
+    pyro: { name: 'Pyro', description: 'Start with Flamethrower', price: 350, weapon: 'flamethrower', health: 100, speed: 1.5, ammoBonus: 0, color: '#e74c3c', colorDark: '#c0392b', unlockType: 'level:30', unlockDesc: 'Reach level 30' },
+    demoman: { name: 'Demoman', description: 'Start with Bombs', price: 400, weapon: 'bomb', health: 110, speed: 1.3, ammoBonus: 0, color: '#8e44ad', colorDark: '#6c3483', unlockType: 'level:35', unlockDesc: 'Reach level 35' },
+    samurai: { name: 'Samurai', description: 'Start with Katana', price: 250, weapon: 'katana', health: 90, speed: 1.7, ammoBonus: 0, color: '#f1c40f', colorDark: '#d4ac0b', unlockType: 'shop', unlockDesc: 'Buy in shop ($250)' }
 };
 
 const WEAPONS = {

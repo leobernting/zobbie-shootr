@@ -144,11 +144,28 @@
         // Mutable state (bare names for existing inline code)
         let gameState = 'menu';
         let selectedDungeon = null;
+        let pendingDungeon = null;
+        let charSelectButtons = [];
         let score = 0;
         let currentLevel = 1;
         let coins = parseInt(localStorage.getItem('coins')) || 0;
         let selectedClass = localStorage.getItem('selectedClass') || 'default';
-        let unlockedClasses = JSON.parse(localStorage.getItem('unlockedClasses')) || ['default'];
+        let unlockedClasses = JSON.parse(localStorage.getItem('unlockedClasses')) || ['default', 'scout'];
+        let bossesDefeated = parseInt(localStorage.getItem('bossesDefeated')) || 0;
+        let highestLevel = parseInt(localStorage.getItem('highestLevel')) || 0;
+        const COLOR_OPTIONS = [
+            { color: '#4ecdc4', colorDark: '#2ea8a0', name: 'Teal' },
+            { color: '#3498db', colorDark: '#2476b0', name: 'Blue' },
+            { color: '#2ecc71', colorDark: '#27ae60', name: 'Green' },
+            { color: '#e74c3c', colorDark: '#c0392b', name: 'Red' },
+            { color: '#e67e22', colorDark: '#d35400', name: 'Orange' },
+            { color: '#f1c40f', colorDark: '#d4ac0b', name: 'Gold' },
+            { color: '#9b59b6', colorDark: '#8e44ad', name: 'Purple' },
+            { color: '#95a5a6', colorDark: '#7f8c8d', name: 'Silver' },
+            { color: '#e91e63', colorDark: '#c2185b', name: 'Pink' },
+            { color: '#1abc9c', colorDark: '#16a085', name: 'Mint' },
+        ];
+        let selectedColorIdx = parseInt(localStorage.getItem('selectedColorIdx')) || 0;
         let scrap = 0;
         let playerArmor = 0;
         let playerArmorTier = 0;
@@ -230,6 +247,40 @@
             localStorage.setItem('coins', coins);
             localStorage.setItem('selectedClass', selectedClass);
             localStorage.setItem('unlockedClasses', JSON.stringify(unlockedClasses));
+            localStorage.setItem('bossesDefeated', bossesDefeated);
+            localStorage.setItem('highestLevel', highestLevel);
+            localStorage.setItem('selectedColorIdx', selectedColorIdx);
+        }
+
+        function checkUnlocks() {
+            let newUnlock = false;
+            for (const [key, cls] of Object.entries(CLASSES)) {
+                if (unlockedClasses.includes(key)) continue;
+                const ut = cls.unlockType;
+                if (ut === 'default') {
+                    unlockedClasses.push(key);
+                    newUnlock = true;
+                } else if (ut && ut.startsWith('boss:')) {
+                    const need = parseInt(ut.split(':')[1]);
+                    if (bossesDefeated >= need) {
+                        unlockedClasses.push(key);
+                        newUnlock = true;
+                    }
+                } else if (ut && ut.startsWith('level:')) {
+                    const need = parseInt(ut.split(':')[1]);
+                    if (highestLevel >= need) {
+                        unlockedClasses.push(key);
+                        newUnlock = true;
+                    }
+                }
+            }
+            if (newUnlock) saveProgress();
+        }
+        checkUnlocks(); // Ensure default unlocks on startup
+        // Reset selectedClass if it's no longer unlocked
+        if (!unlockedClasses.includes(selectedClass)) {
+            selectedClass = 'default';
+            saveProgress();
         }
 
         // Save/load run state
@@ -274,6 +325,10 @@
             playerArmorTier = savedRun.playerArmorTier || 0;
             playerCharms = savedRun.playerCharms || [];
             applyDungeonTheme(savedRun.dungeon);
+            // Apply character color
+            const selColor = COLOR_OPTIONS[selectedColorIdx] || COLOR_OPTIONS[0];
+            COLORS.player = selColor.color;
+            COLORS.playerDark = selColor.colorDark;
             generateLevel(currentLevel);
             // Restore health after generateLevel (which might reset it)
             player.health = savedRun.health;
@@ -315,6 +370,8 @@
                 bossWarningZones = [];
                 G.bossWarningZones = bossWarningZones;
                 activeBoss = null;
+                bossesDefeated++;
+                checkUnlocks();
             }
 
             // Scrap drop - always drops
@@ -2253,6 +2310,8 @@
                 gameState = 'levelcomplete';
                 setTimeout(() => {
                     currentLevel++;
+                    highestLevel = Math.max(highestLevel, currentLevel);
+                    checkUnlocks();
                     // Run shop every 5 levels
                     if (currentLevel > 1 && currentLevel % 5 === 0) {
                         generateRunShopInventory();
@@ -2440,6 +2499,183 @@
                 return;
             }
 
+            // Draw character select screen
+            if (gameState === 'charselect') {
+                ctx.fillStyle = '#1a1a2e';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+                charSelectButtons = [];
+
+                // Title
+                ctx.fillStyle = '#4ecdc4';
+                ctx.font = isMobile ? '22px monospace' : '32px monospace';
+                ctx.textAlign = 'center';
+                ctx.fillText('CHOOSE CHARACTER', canvas.width / 2, isMobile ? 35 : 45);
+
+                // Color picker on the right side
+                const swatchSize = isMobile ? 22 : 28;
+                const swatchGap = isMobile ? 5 : 6;
+                const colorColW = swatchSize + (isMobile ? 12 : 16);
+                const colorPanelX = canvas.width - colorColW - (isMobile ? 6 : 10);
+
+                // Character grid (all classes, locked shown grayed)
+                const csClassKeys = Object.keys(CLASSES);
+                const csCols = isMobile ? 2 : 3;
+                const csCardW = isMobile ? 130 : 170;
+                const csCardH = isMobile ? 90 : 105;
+                const csGap = isMobile ? 10 : 14;
+                const gridTotalW = csCols * csCardW + (csCols - 1) * csGap;
+                const csStartX = (colorPanelX - gridTotalW) / 2;
+                const csStartY = isMobile ? 50 : 60;
+
+                for (let i = 0; i < csClassKeys.length; i++) {
+                    const key = csClassKeys[i];
+                    const cls = CLASSES[key];
+                    const col = i % csCols;
+                    const row = Math.floor(i / csCols);
+                    const cx = csStartX + col * (csCardW + csGap);
+                    const cy = csStartY + row * (csCardH + csGap);
+                    const isUnlocked = unlockedClasses.includes(key);
+                    const isSelected = isUnlocked && (key === selectedClass);
+
+                    // Only push clickable buttons for unlocked classes
+                    if (isUnlocked) {
+                        charSelectButtons.push({ x: cx, y: cy, w: csCardW, h: csCardH, classKey: key });
+                    }
+
+                    // Card background
+                    if (!isUnlocked) {
+                        ctx.fillStyle = '#222';
+                        ctx.fillRect(cx, cy, csCardW, csCardH);
+                        ctx.fillStyle = '#111';
+                        ctx.fillRect(cx + 3, cy + 3, csCardW - 6, csCardH - 6);
+                    } else {
+                        ctx.fillStyle = isSelected ? '#4ecdc4' : '#333';
+                        ctx.fillRect(cx, cy, csCardW, csCardH);
+                        ctx.fillStyle = '#1a1a2e';
+                        ctx.fillRect(cx + 3, cy + 3, csCardW - 6, csCardH - 6);
+                    }
+
+                    // Character color preview square
+                    const previewSize = isMobile ? 22 : 28;
+                    const previewX = cx + (isMobile ? 12 : 15);
+                    const previewY = cy + (csCardH - previewSize) / 2;
+                    if (isUnlocked) {
+                        const prevColor = isSelected ? COLOR_OPTIONS[selectedColorIdx] : { color: cls.color || '#4ecdc4', colorDark: cls.colorDark || '#2ea8a0' };
+                        ctx.fillStyle = prevColor.colorDark;
+                        ctx.fillRect(previewX, previewY, previewSize, previewSize);
+                        ctx.fillStyle = prevColor.color;
+                        ctx.fillRect(previewX + 2, previewY + 2, previewSize - 4, previewSize - 4);
+                    } else {
+                        // Locked: dark silhouette with lock
+                        ctx.fillStyle = '#333';
+                        ctx.fillRect(previewX, previewY, previewSize, previewSize);
+                        ctx.fillStyle = '#555';
+                        ctx.font = isMobile ? '14px monospace' : '18px monospace';
+                        ctx.textAlign = 'center';
+                        ctx.fillText('?', previewX + previewSize / 2, previewY + previewSize / 2 + (isMobile ? 5 : 6));
+                        ctx.textAlign = 'left';
+                    }
+
+                    // Class name
+                    const textX = previewX + previewSize + (isMobile ? 8 : 12);
+                    ctx.fillStyle = !isUnlocked ? '#555' : (isSelected ? '#4ecdc4' : '#fff');
+                    ctx.font = isMobile ? '11px monospace' : '13px monospace';
+                    ctx.textAlign = 'left';
+                    ctx.fillText(cls.name, textX, cy + (isMobile ? 22 : 26));
+
+                    if (isUnlocked) {
+                        // Weapon
+                        ctx.fillStyle = '#aaa';
+                        ctx.font = isMobile ? '9px monospace' : '10px monospace';
+                        ctx.fillText(cls.weapon.toUpperCase(), textX, cy + (isMobile ? 36 : 42));
+
+                        // Stats: HP / Speed
+                        ctx.fillStyle = '#2ecc71';
+                        ctx.font = isMobile ? '9px monospace' : '10px monospace';
+                        ctx.fillText('HP:' + cls.health, textX, cy + (isMobile ? 50 : 58));
+                        ctx.fillStyle = '#3498db';
+                        ctx.fillText('SPD:' + cls.speed, textX + (isMobile ? 55 : 65), cy + (isMobile ? 50 : 58));
+
+                        // Description
+                        ctx.fillStyle = '#888';
+                        ctx.font = isMobile ? '8px monospace' : '9px monospace';
+                        ctx.fillText(cls.description, textX, cy + (isMobile ? 64 : 74));
+                    } else {
+                        // Locked: show unlock condition
+                        ctx.fillStyle = '#e74c3c';
+                        ctx.font = isMobile ? '9px monospace' : '10px monospace';
+                        ctx.fillText('LOCKED', textX, cy + (isMobile ? 40 : 46));
+                        ctx.fillStyle = '#777';
+                        ctx.font = isMobile ? '8px monospace' : '9px monospace';
+                        ctx.fillText(cls.unlockDesc || '???', textX, cy + (isMobile ? 55 : 62));
+                    }
+                }
+
+                // Draw color swatches vertically on the right
+                const colorStartY = csStartY;
+                const swatchCenterX = colorPanelX + colorColW / 2;
+
+                ctx.fillStyle = '#aaa';
+                ctx.font = isMobile ? '8px monospace' : '9px monospace';
+                ctx.textAlign = 'center';
+                ctx.fillText('COLOR', swatchCenterX, colorStartY - (isMobile ? 4 : 5));
+
+                for (let ci = 0; ci < COLOR_OPTIONS.length; ci++) {
+                    const co = COLOR_OPTIONS[ci];
+                    const sx = swatchCenterX - swatchSize / 2;
+                    const sy = colorStartY + ci * (swatchSize + swatchGap);
+                    const isSel = (ci === selectedColorIdx);
+
+                    charSelectButtons.push({ x: sx, y: sy, w: swatchSize, h: swatchSize, colorIdx: ci });
+
+                    if (isSel) {
+                        ctx.fillStyle = '#fff';
+                        ctx.fillRect(sx - 2, sy - 2, swatchSize + 4, swatchSize + 4);
+                    }
+                    ctx.fillStyle = co.colorDark;
+                    ctx.fillRect(sx, sy, swatchSize, swatchSize);
+                    ctx.fillStyle = co.color;
+                    ctx.fillRect(sx + 2, sy + 2, swatchSize - 4, swatchSize - 4);
+                }
+
+                // PLAY button
+                const csRows = Math.ceil(csClassKeys.length / csCols);
+                const playBtnW = isMobile ? 120 : 150;
+                const playBtnH = isMobile ? 38 : 45;
+                const playBtnY = csStartY + csRows * (csCardH + csGap) + (isMobile ? 5 : 10);
+                const playBtnX = canvas.width / 2 - playBtnW / 2 + (isMobile ? 40 : 50);
+                charSelectButtons.push({ x: playBtnX, y: playBtnY, w: playBtnW, h: playBtnH, action: 'play' });
+
+                ctx.fillStyle = '#27ae60';
+                ctx.fillRect(playBtnX, playBtnY, playBtnW, playBtnH);
+                ctx.fillStyle = '#2ecc71';
+                ctx.fillRect(playBtnX + 3, playBtnY + 3, playBtnW - 6, playBtnH - 6);
+                ctx.fillStyle = '#fff';
+                ctx.font = isMobile ? '14px monospace' : '18px monospace';
+                ctx.textAlign = 'center';
+                ctx.fillText('PLAY', playBtnX + playBtnW / 2, playBtnY + (isMobile ? 25 : 30));
+
+                // BACK button
+                const backBtnW = isMobile ? 90 : 110;
+                const backBtnH = isMobile ? 38 : 45;
+                const backBtnX = canvas.width / 2 - backBtnW / 2 - (isMobile ? 40 : 50);
+                const backBtnY = playBtnY;
+                charSelectButtons.push({ x: backBtnX, y: backBtnY, w: backBtnW, h: backBtnH, action: 'back' });
+
+                ctx.fillStyle = '#555';
+                ctx.fillRect(backBtnX, backBtnY, backBtnW, backBtnH);
+                ctx.fillStyle = '#777';
+                ctx.fillRect(backBtnX + 3, backBtnY + 3, backBtnW - 6, backBtnH - 6);
+                ctx.fillStyle = '#fff';
+                ctx.font = isMobile ? '12px monospace' : '14px monospace';
+                ctx.textAlign = 'center';
+                ctx.fillText('BACK', backBtnX + backBtnW / 2, backBtnY + (isMobile ? 25 : 30));
+
+                ctx.textAlign = 'left';
+                return;
+            }
+
             // Draw shop screen
             if (gameState === 'shop') {
                 ctx.fillStyle = '#1a1a2e';
@@ -2457,8 +2693,8 @@
                 ctx.textAlign = 'center';
                 ctx.fillText('CLASS SHOP', canvas.width/2, isMobile ? 50 : 60);
 
-                // Draw class options
-                const classKeys = Object.keys(CLASSES);
+                // Draw class options (only shop-purchasable classes)
+                const classKeys = Object.keys(CLASSES).filter(k => CLASSES[k].unlockType === 'shop');
                 const cols = isMobile ? 2 : 3;
                 const btnW = isMobile ? 160 : 190;
                 const btnH = isMobile ? 70 : 80;
@@ -3529,6 +3765,9 @@
             player.maxHealth = cls.health;
             player.health = cls.health;
             player.speed = cls.speed;
+            const mpColor = COLOR_OPTIONS[selectedColorIdx] || COLOR_OPTIONS[0];
+            COLORS.player = mpColor.color;
+            COLORS.playerDark = mpColor.colorDark;
             const weaponData = WEAPONS[cls.weapon];
             if (weaponData.melee || weaponData.placeable) {
                 player.maxAmmo = weaponData.maxAmmo || 0;
@@ -3765,18 +4004,34 @@
                             }
                             break;
                         } else if (btn.dungeon) {
-                            // Clear any saved run when starting new
+                            pendingDungeon = btn.dungeon;
+                            gameState = 'charselect';
+                            break;
+                        }
+                    }
+                }
+            } else if (gameState === 'charselect') {
+                for (const btn of charSelectButtons) {
+                    if (clickX >= btn.x && clickX <= btn.x + btn.w &&
+                        clickY >= btn.y && clickY <= btn.y + btn.h) {
+                        if (btn.action === 'back') {
+                            gameState = 'menu';
+                            break;
+                        } else if (btn.action === 'play') {
+                            // Start the run with selected character
                             clearSavedRun();
                             resetRunState();
-                            applyDungeonTheme(btn.dungeon);
+                            applyDungeonTheme(pendingDungeon);
                             score = 0;
                             currentLevel = 1;
-                            // Apply class bonuses
                             const cls = CLASSES[selectedClass] || CLASSES.default;
                             player.weapon = cls.weapon;
                             player.maxHealth = cls.health;
                             player.health = cls.health;
                             player.speed = cls.speed;
+                            const playColor = COLOR_OPTIONS[selectedColorIdx] || COLOR_OPTIONS[0];
+                            COLORS.player = playColor.color;
+                            COLORS.playerDark = playColor.colorDark;
                             const weaponData = WEAPONS[cls.weapon];
                             if (weaponData.melee || weaponData.placeable) {
                                 player.maxAmmo = weaponData.maxAmmo || 0;
@@ -3787,6 +4042,14 @@
                             }
                             generateLevel(1);
                             gameState = 'playing';
+                            break;
+                        } else if (btn.classKey) {
+                            selectedClass = btn.classKey;
+                            saveProgress();
+                            break;
+                        } else if (btn.colorIdx !== undefined) {
+                            selectedColorIdx = btn.colorIdx;
+                            saveProgress();
                             break;
                         }
                     }
@@ -3872,17 +4135,37 @@
                                     }
                                     return;
                                 } else if (btn.dungeon) {
+                                    pendingDungeon = btn.dungeon;
+                                    gameState = 'charselect';
+                                    return;
+                                }
+                            }
+                        }
+                        return;
+                    }
+
+                    // Handle character select
+                    if (gameState === 'charselect') {
+                        for (const btn of charSelectButtons) {
+                            if (tx >= btn.x && tx <= btn.x + btn.w &&
+                                ty >= btn.y && ty <= btn.y + btn.h) {
+                                if (btn.action === 'back') {
+                                    gameState = 'menu';
+                                    return;
+                                } else if (btn.action === 'play') {
                                     clearSavedRun();
                                     resetRunState();
-                                    applyDungeonTheme(btn.dungeon);
+                                    applyDungeonTheme(pendingDungeon);
                                     score = 0;
                                     currentLevel = 1;
-                                    // Apply class bonuses
                                     const cls = CLASSES[selectedClass] || CLASSES.default;
                                     player.weapon = cls.weapon;
                                     player.maxHealth = cls.health;
                                     player.health = cls.health;
                                     player.speed = cls.speed;
+                                    const touchColor = COLOR_OPTIONS[selectedColorIdx] || COLOR_OPTIONS[0];
+                                    COLORS.player = touchColor.color;
+                                    COLORS.playerDark = touchColor.colorDark;
                                     const weaponData = WEAPONS[cls.weapon];
                                     if (weaponData.melee || weaponData.placeable) {
                                         player.maxAmmo = weaponData.maxAmmo || 0;
@@ -3893,6 +4176,14 @@
                                     }
                                     generateLevel(1);
                                     gameState = 'playing';
+                                    return;
+                                } else if (btn.classKey) {
+                                    selectedClass = btn.classKey;
+                                    saveProgress();
+                                    return;
+                                } else if (btn.colorIdx !== undefined) {
+                                    selectedColorIdx = btn.colorIdx;
+                                    saveProgress();
                                     return;
                                 }
                             }
