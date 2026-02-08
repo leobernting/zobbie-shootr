@@ -888,6 +888,36 @@
             // Sync walls to G so pointInWalls sees current level's walls
             G.walls = walls;
 
+            // Build reachability map from player spawn via BFS flood-fill
+            // Use player size so gaps too narrow to walk through aren't considered reachable
+            const CELL = 10;
+            const pSize = Math.max(player.width, player.height);
+            const cols = Math.ceil(W / CELL);
+            const rows = Math.ceil(H / CELL);
+            const reachable = new Set();
+            const startCol = Math.floor(player.x / CELL);
+            const startRow = Math.floor(player.y / CELL);
+            const queue = [[startCol, startRow]];
+            reachable.add(startCol + ',' + startRow);
+            while (queue.length > 0) {
+                const [c, r] = queue.shift();
+                const neighbors = [[c-1,r],[c+1,r],[c,r-1],[c,r+1]];
+                for (const [nc, nr] of neighbors) {
+                    if (nc < 0 || nr < 0 || nc >= cols || nr >= rows) continue;
+                    const key = nc + ',' + nr;
+                    if (reachable.has(key)) continue;
+                    const cx = nc * CELL + CELL / 2;
+                    const cy = nr * CELL + CELL / 2;
+                    if (!pointInWalls(cx, cy, pSize, pSize)) {
+                        reachable.add(key);
+                        queue.push([nc, nr]);
+                    }
+                }
+            }
+            function isReachable(x, y) {
+                return reachable.has(Math.floor(x / CELL) + ',' + Math.floor(y / CELL));
+            }
+
             // Get dungeon difficulty settings
             const dungeonSettings = DUNGEONS[selectedDungeon] || DUNGEONS.dungeon;
             const countMult = dungeonSettings.enemyCountMult || 1;
@@ -920,7 +950,7 @@
 
                 // Check not in wall and not too close to player spawn
                 const distToPlayer = Math.hypot(x - player.x, y - player.y);
-                if (!pointInWalls(x, y, enemyType.size, enemyType.size) && distToPlayer > 100) {
+                if (!pointInWalls(x, y, enemyType.size, enemyType.size) && distToPlayer > 100 && isReachable(x, y)) {
                     const baseHealth = enemyType.health + levelNum * 5;
                     enemies.push({
                         x: x,
@@ -949,7 +979,7 @@
                     const bx = 50 + Math.random() * (W - 100);
                     const by = 50 + Math.random() * (H - 100);
                     const distToPlayer = Math.hypot(bx - player.x, by - player.y);
-                    if (!pointInWalls(bx, by, bossType.size, bossType.size) && distToPlayer > 150) {
+                    if (!pointInWalls(bx, by, bossType.size, bossType.size) && distToPlayer > 150 && isReachable(bx, by)) {
                         enemies.push({
                             x: bx,
                             y: by,
