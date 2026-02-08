@@ -211,6 +211,19 @@ const SFX = (() => {
         noise(t, 0.1, 0.25, 2000);
     }
 
+    // --- Game over ---
+
+    function gameOver() {
+        init();
+        if (muted || !ctx) return;
+        const t = ctx.currentTime;
+        // Descending doom tones
+        sweep(t, 400, 100, 0.3, 0.4, 'square');
+        sweep(t + 0.15, 300, 80, 0.3, 0.35, 'square');
+        sweep(t + 0.35, 200, 40, 0.5, 0.5, 'sine');
+        noise(t + 0.35, 0.2, 0.3, 800);
+    }
+
     function setVolume(v) {
         if (sfxGain) sfxGain.gain.value = Math.max(0, Math.min(1, v));
     }
@@ -222,5 +235,5 @@ const SFX = (() => {
 
     function isMuted() { return muted; }
 
-    return { weapon, pickup, explosion, enemyShoot, setVolume, toggleMute, isMuted };
+    return { weapon, pickup, explosion, enemyShoot, gameOver, setVolume, toggleMute, isMuted };
 })();
