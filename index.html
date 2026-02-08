@@ -3441,7 +3441,16 @@
         }
 
         // Game loop
-        function gameLoop() {
+        let lastFrameTime = 0;
+        const TICK_INTERVAL = 1000 / 100;
+        let accumulator = 0;
+        function gameLoop(timestamp) {
+            requestAnimationFrame(gameLoop);
+            if (!lastFrameTime) { lastFrameTime = timestamp; return; }
+            const elapsed = Math.min(timestamp - lastFrameTime, 200);
+            lastFrameTime = timestamp;
+            accumulator += elapsed;
+
             // Sync state to G for extracted modules
             G.gameState = gameState;
             G.selectedDungeon = selectedDungeon;
@@ -3478,15 +3487,17 @@
                 }
             }
 
-            updatePlayer();
-            updateEnemies();
-            updateBullets();
-            updateBombs();
-            updateParticles();
-            spawnAmbientParticles();
-            checkLevelComplete();
+            while (accumulator >= TICK_INTERVAL) {
+                updatePlayer();
+                updateEnemies();
+                updateBullets();
+                updateBombs();
+                updateParticles();
+                spawnAmbientParticles();
+                checkLevelComplete();
+                accumulator -= TICK_INTERVAL;
+            }
             draw();
-            requestAnimationFrame(gameLoop);
         }
 
         // Cheat code buffer
