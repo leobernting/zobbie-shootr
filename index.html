@@ -106,7 +106,7 @@
         const H = canvas.height;
 
         // Game state
-        let gameState = 'menu'; // menu, shop, playing, gameover, levelcomplete, paused
+        let gameState = 'menu'; // menu, shop, runshop, playing, gameover, levelcomplete, paused
         let selectedDungeon = null;
         let score = 0;
         let currentLevel = 1;
@@ -115,6 +115,14 @@
         let coins = parseInt(localStorage.getItem('coins')) || 0;
         let selectedClass = localStorage.getItem('selectedClass') || 'default';
         let unlockedClasses = JSON.parse(localStorage.getItem('unlockedClasses')) || ['default'];
+
+        // Run-only currency and upgrades (reset on death)
+        let scrap = 0;
+        let playerArmor = 0;        // damage reduction fraction (0 to 0.45)
+        let playerArmorTier = 0;     // 0=none, 1=leather, 2=chain, 3=plate
+        let playerCharms = [];       // array of charm ids, max 3
+        let runShopInventory = [];   // items available in current run shop
+        let regenTimer = 0;          // tick counter for regen aura
 
         // Class definitions
         const CLASSES = {
@@ -148,7 +156,11 @@
                 maxAmmo: player.maxAmmo,
                 score: score,
                 dungeon: selectedDungeon,
-                speed: player.speed
+                speed: player.speed,
+                scrap: scrap,
+                playerArmor: playerArmor,
+                playerArmorTier: playerArmorTier,
+                playerCharms: playerCharms
             };
             localStorage.setItem('savedRun', JSON.stringify(savedRun));
         }
@@ -168,6 +180,10 @@
             player.maxAmmo = savedRun.maxAmmo;
             player.speed = savedRun.speed || 1.5;
             score = savedRun.score;
+            scrap = savedRun.scrap || 0;
+            playerArmor = savedRun.playerArmor || 0;
+            playerArmorTier = savedRun.playerArmorTier || 0;
+            playerCharms = savedRun.playerCharms || [];
             applyDungeonTheme(savedRun.dungeon);
             generateLevel(currentLevel);
             // Restore health after generateLevel (which might reset it)
@@ -203,15 +219,48 @@
             shotgun: { fireRate: 45, ammoUse: 3, maxAmmo: 18, spread: 5, pellets: 5, color: '#e67e22', label: 'S' },
             rifle: { fireRate: 20, ammoUse: 1, maxAmmo: 20, damage: 35, color: '#1abc9c', label: 'F' },
             railgun: { fireRate: 70, ammoUse: 4, maxAmmo: 16, pierce: true, color: '#9b59b6', label: 'R' },
-            minigun: { fireRate: 4, ammoUse: 1, maxAmmo: 100, damage: 8, color: '#e74c3c', label: 'G' },
+            minigun: { fireRate: 6, ammoUse: 1, maxAmmo: 100, damage: 5, color: '#e74c3c', label: 'G' },
             sword: { fireRate: 30, damage: 40, range: 45, arc: Math.PI/2, melee: true, color: '#c0c0c0', label: 'W' },
             katana: { fireRate: 18, damage: 25, range: 55, arc: Math.PI/3, melee: true, color: '#e8e8e8', label: 'K' },
             sniper: { fireRate: 90, ammoUse: 1, maxAmmo: 8, damage: 150, color: '#2c3e50', label: 'N' },
-            flamethrower: { fireRate: 3, ammoUse: 1, maxAmmo: 80, damage: 5, flame: true, color: '#ff4500', label: 'T' },
+            flamethrower: { fireRate: 5, ammoUse: 1, maxAmmo: 80, damage: 3, flame: true, color: '#ff4500', label: 'T' },
             rocketlauncher: { fireRate: 80, ammoUse: 1, maxAmmo: 6, damage: 80, explosive: true, explosionRadius: 60, color: '#556b2f', label: 'L' },
             bomb: { fireRate: 60, ammoUse: 1, maxAmmo: 3, damage: 150, explosionRadius: 100, placeable: true, fuseTime: 180, color: '#1a1a1a', label: 'B' }
         };
         const WEAPON_LIST = ['pistol', 'smg', 'shotgun', 'rifle', 'railgun', 'minigun', 'sword', 'katana', 'sniper', 'flamethrower', 'rocketlauncher', 'bomb'];
+
+        // Armor tiers for run shop
+        const ARMOR_TIERS = [
+            { tier: 1, name: 'Leather Vest',  dr: 0.15, price: 30,  color: '#8b5e3c' },
+            { tier: 2, name: 'Chain Mail',     dr: 0.30, price: 70,  color: '#a0a0a0' },
+            { tier: 3, name: 'Plate Armor',    dr: 0.45, price: 120, color: '#c0c8d0' }
+        ];
+
+        // Charms (max 3 held at once)
+        const CHARMS = {
+            swift_boots:   { name: 'Swift Boots',   desc: '+20% speed',        price: 40, type: 'passive', icon: 'SB', color: '#3498db' },
+            regen_aura:    { name: 'Regen Aura',    desc: '1 HP / 3s',         price: 50, type: 'passive', icon: 'RA', color: '#2ecc71' },
+            big_magazines: { name: 'Big Magazines',  desc: '+50% ammo cap',    price: 35, type: 'passive', icon: 'BM', color: '#f1c40f' },
+            thick_skin:    { name: 'Thick Skin',    desc: '+25 max HP',        price: 45, type: 'passive', icon: 'TS', color: '#e67e22' },
+            vampiric_fang: { name: 'Vampiric Fang', desc: 'Heal 5 HP on kill', price: 60, type: 'onkill',  icon: 'VF', color: '#e74c3c' },
+            scrap_magnet:  { name: 'Scrap Magnet',  desc: '+1 scrap / kill',   price: 45, type: 'onkill',  icon: 'SM', color: '#95a5a6' },
+            boom_skull:    { name: 'Boom Skull',     desc: 'Explode on kill',  price: 75, type: 'onkill',  icon: 'BS', color: '#ff4500' }
+        };
+
+        // Run shop weapon prices (level-gated)
+        const RUN_SHOP_WEAPONS = [
+            { weapon: 'smg',             price: 25, minLevel: 1 },
+            { weapon: 'shotgun',         price: 30, minLevel: 1 },
+            { weapon: 'rifle',           price: 35, minLevel: 2 },
+            { weapon: 'sword',           price: 30, minLevel: 2 },
+            { weapon: 'katana',          price: 40, minLevel: 3 },
+            { weapon: 'railgun',         price: 50, minLevel: 3 },
+            { weapon: 'minigun',         price: 55, minLevel: 4 },
+            { weapon: 'sniper',          price: 60, minLevel: 3 },
+            { weapon: 'flamethrower',    price: 55, minLevel: 4 },
+            { weapon: 'rocketlauncher',  price: 80, minLevel: 5 },
+            { weapon: 'bomb',            price: 45, minLevel: 4 }
+        ];
 
         // Enemy types per dungeon
         const DUNGEON_ENEMIES = {
@@ -267,6 +316,8 @@
         let particles = [];
         let pickups = [];
         let bombs = [];
+        let floorDecorations = [];
+        let levelProps = []; // large decorative objects (trees, pillars, etc.)
 
         // Safe zone at spawn
         const safeZone = { x: 0, y: 0, radius: 50 };
@@ -384,6 +435,372 @@
             }
         }
 
+        // Reset run-only state (on death or new run)
+        function resetRunState() {
+            scrap = 0;
+            playerArmor = 0;
+            playerArmorTier = 0;
+            playerCharms = [];
+            runShopInventory = [];
+            regenTimer = 0;
+        }
+
+        // Centralized kill handler
+        function onEnemyKill(enemy) {
+            score += 100;
+
+            // Scrap drop - always drops
+            let scrapAmount;
+            if (enemy.type === 'boss') {
+                scrapAmount = 8 + Math.floor(Math.random() * 5); // 8-12
+            } else if (enemy.type === 'tank') {
+                scrapAmount = 2 + Math.floor(Math.random() * 3); // 2-4
+            } else if (enemy.type === 'charger') {
+                scrapAmount = 1;
+            } else {
+                scrapAmount = 1 + Math.floor(Math.random() * 2); // 1-2
+            }
+            // Scrap Magnet charm bonus
+            if (playerCharms.includes('scrap_magnet')) {
+                scrapAmount += 1;
+            }
+            dropScrapPickup(enemy.x, enemy.y, scrapAmount);
+
+            // On-kill charm effects
+            if (playerCharms.includes('vampiric_fang')) {
+                player.health = Math.min(player.health + 5, player.maxHealth);
+            }
+            if (playerCharms.includes('boom_skull')) {
+                // Small explosion on kill (radius 40, damage 20)
+                for (let k = 0; k < 10; k++) {
+                    const angle = Math.random() * Math.PI * 2;
+                    const speed = Math.random() * 4 + 1;
+                    particles.push({
+                        x: enemy.x, y: enemy.y,
+                        vx: Math.cos(angle) * speed,
+                        vy: Math.sin(angle) * speed,
+                        life: 20,
+                        color: Math.random() > 0.3 ? '#ff4500' : '#ff0'
+                    });
+                }
+                for (let j = enemies.length - 1; j >= 0; j--) {
+                    const other = enemies[j];
+                    const dist = Math.hypot(other.x - enemy.x, other.y - enemy.y);
+                    if (dist <= 40 && dist > 0) {
+                        other.health -= 20;
+                    }
+                }
+            }
+
+            // Coin drop chance (30%)
+            if (Math.random() < 0.3) {
+                pickups.push({
+                    x: enemy.x + (Math.random() - 0.5) * 10,
+                    y: enemy.y + (Math.random() - 0.5) * 10,
+                    type: 'coin', width: 10, height: 10, value: 1
+                });
+            }
+
+            // Pickup drop chance (40%)
+            if (Math.random() < 0.4) {
+                let type;
+                const roll = Math.random();
+                if (roll < 0.08) {
+                    const available = [];
+                    if (currentLevel >= 1) available.push('smg');
+                    if (currentLevel >= 2) available.push('shotgun', 'rifle');
+                    if (currentLevel >= 3) available.push('railgun');
+                    if (currentLevel >= 4) available.push('minigun');
+                    if (currentLevel >= 2 && Math.random() < 0.25) available.push('sword');
+                    if (currentLevel >= 3 && Math.random() < 0.25) available.push('katana');
+                    if (currentLevel >= 3 && Math.random() < 0.15) available.push('sniper');
+                    if (currentLevel >= 4 && Math.random() < 0.15) available.push('flamethrower');
+                    if (currentLevel >= 5 && Math.random() < 0.15) available.push('rocketlauncher');
+                    if (currentLevel >= 4 && Math.random() < 0.05) available.push('bomb');
+                    if (available.length > 0) {
+                        type = available[Math.floor(Math.random() * available.length)];
+                    } else {
+                        type = 'ammo';
+                    }
+                } else if (roll < 0.5) {
+                    type = 'health';
+                } else {
+                    type = 'ammo';
+                }
+                pickups.push({
+                    x: enemy.x, y: enemy.y,
+                    type: type, width: 12, height: 12
+                });
+            }
+        }
+
+        // Spawn scrap pickup entity
+        function dropScrapPickup(x, y, amount) {
+            for (let i = 0; i < amount; i++) {
+                pickups.push({
+                    x: x + (Math.random() - 0.5) * 20,
+                    y: y + (Math.random() - 0.5) * 20,
+                    type: 'scrap', width: 8, height: 8, value: 1
+                });
+            }
+        }
+
+        // Apply/reapply passive charm stat mods
+        function applyPassiveCharms() {
+            // Get base class stats
+            const cls = CLASSES[selectedClass] || CLASSES.default;
+            let baseSpeed = cls.speed;
+            let baseMaxHealth = cls.health;
+
+            // Thick Skin: +25 max HP
+            if (playerCharms.includes('thick_skin')) {
+                baseMaxHealth += 25;
+            }
+
+            // Swift Boots: +20% speed
+            if (playerCharms.includes('swift_boots')) {
+                baseSpeed *= 1.2;
+            }
+
+            player.maxHealth = baseMaxHealth;
+            player.speed = baseSpeed;
+
+            // Big Magazines: +50% ammo capacity
+            const weapon = WEAPONS[player.weapon];
+            if (weapon && !weapon.melee) {
+                let baseMaxAmmo = weapon.maxAmmo;
+                if (playerCharms.includes('big_magazines')) {
+                    baseMaxAmmo = Math.floor(baseMaxAmmo * 1.5);
+                }
+                player.maxAmmo = baseMaxAmmo;
+            }
+        }
+
+        // Generate run shop inventory
+        function generateRunShopInventory() {
+            runShopInventory = [];
+
+            // Next armor tier (if available)
+            if (playerArmorTier < ARMOR_TIERS.length) {
+                const nextArmor = ARMOR_TIERS[playerArmorTier];
+                runShopInventory.push({ category: 'armor', data: nextArmor });
+            }
+
+            // 2 random weapons (level-gated, not already held)
+            const availableWeapons = RUN_SHOP_WEAPONS
+                .filter(w => w.minLevel <= currentLevel && w.weapon !== player.weapon);
+            const shuffledWeapons = availableWeapons.sort(() => Math.random() - 0.5);
+            for (let i = 0; i < Math.min(2, shuffledWeapons.length); i++) {
+                runShopInventory.push({ category: 'weapon', data: shuffledWeapons[i] });
+            }
+
+            // 2 random charms (not already owned)
+            const availableCharms = Object.keys(CHARMS)
+                .filter(id => !playerCharms.includes(id));
+            const shuffledCharms = availableCharms.sort(() => Math.random() - 0.5);
+            const charmSlots = 3 - playerCharms.length;
+            for (let i = 0; i < Math.min(2, shuffledCharms.length, charmSlots + 1); i++) {
+                runShopInventory.push({
+                    category: 'charm',
+                    data: { id: shuffledCharms[i], ...CHARMS[shuffledCharms[i]] }
+                });
+            }
+        }
+
+        // Draw run shop UI
+        function drawRunShop() {
+            ctx.fillStyle = '#1a1a2e';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // Scrap display
+            ctx.fillStyle = '#95a5a6';
+            ctx.font = isMobile ? '14px monospace' : '18px monospace';
+            ctx.textAlign = 'right';
+            ctx.fillText('Scrap: ' + scrap, canvas.width - 15, 25);
+
+            // Title
+            ctx.fillStyle = '#95a5a6';
+            ctx.font = isMobile ? '22px monospace' : '32px monospace';
+            ctx.textAlign = 'center';
+            ctx.fillText('RUN SHOP', canvas.width / 2, isMobile ? 50 : 55);
+
+            ctx.fillStyle = '#666';
+            ctx.font = isMobile ? '10px monospace' : '12px monospace';
+            ctx.fillText('Spend scrap to upgrade this run', canvas.width / 2, isMobile ? 68 : 78);
+
+            // Draw items in grid
+            const cols = isMobile ? 2 : 3;
+            const btnW = isMobile ? 155 : 185;
+            const btnH = isMobile ? 75 : 85;
+            const gap = isMobile ? 10 : 15;
+            const startX = (canvas.width - (cols * btnW + (cols - 1) * gap)) / 2;
+            const startY = isMobile ? 85 : 100;
+
+            menuButtons = [];
+
+            for (let i = 0; i < runShopInventory.length; i++) {
+                const item = runShopInventory[i];
+                const col = i % cols;
+                const row = Math.floor(i / cols);
+                const x = startX + col * (btnW + gap);
+                const y = startY + row * (btnH + gap);
+
+                let name, desc, price, itemColor, owned = false, cantUse = false;
+
+                if (item.category === 'armor') {
+                    name = item.data.name;
+                    desc = Math.round(item.data.dr * 100) + '% damage reduction';
+                    price = item.data.price;
+                    itemColor = item.data.color;
+                    owned = playerArmorTier >= item.data.tier;
+                } else if (item.category === 'weapon') {
+                    const wname = item.data.weapon;
+                    name = wname.charAt(0).toUpperCase() + wname.slice(1);
+                    desc = 'Weapon';
+                    price = item.data.price;
+                    itemColor = WEAPONS[wname].color;
+                    owned = player.weapon === wname;
+                } else if (item.category === 'charm') {
+                    name = item.data.name;
+                    desc = item.data.desc;
+                    price = item.data.price;
+                    itemColor = item.data.color;
+                    owned = playerCharms.includes(item.data.id);
+                    cantUse = !owned && playerCharms.length >= 3;
+                }
+
+                const canAfford = scrap >= price && !owned && !cantUse;
+
+                menuButtons.push({ x, y, w: btnW, h: btnH, shopIndex: i });
+
+                // Button background
+                if (owned) {
+                    ctx.fillStyle = '#2ecc71';
+                } else if (canAfford) {
+                    ctx.fillStyle = itemColor || '#888';
+                } else {
+                    ctx.fillStyle = '#444';
+                }
+                ctx.fillRect(x, y, btnW, btnH);
+                ctx.fillStyle = '#1a1a2e';
+                ctx.fillRect(x + 3, y + 3, btnW - 6, btnH - 6);
+
+                // Category label
+                ctx.fillStyle = '#666';
+                ctx.font = isMobile ? '8px monospace' : '9px monospace';
+                ctx.textAlign = 'center';
+                const catLabel = item.category.toUpperCase();
+                ctx.fillText(catLabel, x + btnW / 2, y + (isMobile ? 14 : 16));
+
+                // Item name
+                ctx.fillStyle = owned ? '#2ecc71' : (canAfford ? '#fff' : '#666');
+                ctx.font = isMobile ? '11px monospace' : '13px monospace';
+                ctx.fillText(name, x + btnW / 2, y + (isMobile ? 30 : 34));
+
+                // Description
+                ctx.fillStyle = '#888';
+                ctx.font = isMobile ? '8px monospace' : '10px monospace';
+                ctx.fillText(desc, x + btnW / 2, y + (isMobile ? 44 : 50));
+
+                // Price or status
+                if (owned) {
+                    ctx.fillStyle = '#2ecc71';
+                    ctx.fillText('OWNED', x + btnW / 2, y + (isMobile ? 58 : 66));
+                } else if (cantUse) {
+                    ctx.fillStyle = '#e74c3c';
+                    ctx.fillText('MAX CHARMS (3)', x + btnW / 2, y + (isMobile ? 58 : 66));
+                } else {
+                    ctx.fillStyle = canAfford ? '#95a5a6' : '#e74c3c';
+                    ctx.fillText(price + ' Scrap', x + btnW / 2, y + (isMobile ? 58 : 66));
+                }
+            }
+
+            // Continue button
+            const contBtnW = isMobile ? 140 : 160;
+            const contBtnH = isMobile ? 40 : 45;
+            const contBtnX = canvas.width / 2 - contBtnW / 2;
+            const contBtnY = canvas.height - (isMobile ? 60 : 70);
+            menuButtons.push({ x: contBtnX, y: contBtnY, w: contBtnW, h: contBtnH, action: 'runshop_continue' });
+
+            ctx.fillStyle = '#27ae60';
+            ctx.fillRect(contBtnX, contBtnY, contBtnW, contBtnH);
+            ctx.fillStyle = '#2ecc71';
+            ctx.fillRect(contBtnX + 3, contBtnY + 3, contBtnW - 6, contBtnH - 6);
+            ctx.fillStyle = '#1a1a2e';
+            ctx.font = isMobile ? '14px monospace' : '16px monospace';
+            ctx.textAlign = 'center';
+            ctx.fillText('CONTINUE', contBtnX + contBtnW / 2, contBtnY + (isMobile ? 26 : 30));
+
+            // Current charms display at bottom
+            if (playerCharms.length > 0) {
+                ctx.fillStyle = '#666';
+                ctx.font = isMobile ? '9px monospace' : '11px monospace';
+                ctx.fillText('Active Charms:', canvas.width / 2, contBtnY - (isMobile ? 28 : 30));
+                const charmText = playerCharms.map(id => CHARMS[id].name).join(', ');
+                ctx.fillStyle = '#aaa';
+                ctx.font = isMobile ? '8px monospace' : '10px monospace';
+                ctx.fillText(charmText, canvas.width / 2, contBtnY - (isMobile ? 16 : 16));
+            }
+
+            ctx.textAlign = 'left';
+        }
+
+        // Handle run shop purchases
+        function handleRunShopClick(clickX, clickY) {
+            for (const btn of menuButtons) {
+                if (clickX >= btn.x && clickX <= btn.x + btn.w &&
+                    clickY >= btn.y && clickY <= btn.y + btn.h) {
+                    if (btn.action === 'runshop_continue') {
+                        // Continue to next room
+                        generateLevel(currentLevel);
+                        gameState = 'playing';
+                        return true;
+                    }
+                    if (btn.shopIndex !== undefined) {
+                        const item = runShopInventory[btn.shopIndex];
+                        if (!item) return true;
+
+                        if (item.category === 'armor') {
+                            if (playerArmorTier < item.data.tier && scrap >= item.data.price) {
+                                scrap -= item.data.price;
+                                playerArmorTier = item.data.tier;
+                                playerArmor = item.data.dr;
+                            }
+                        } else if (item.category === 'weapon') {
+                            if (player.weapon !== item.data.weapon && scrap >= item.data.price) {
+                                scrap -= item.data.price;
+                                player.weapon = item.data.weapon;
+                                const newWeapon = WEAPONS[item.data.weapon];
+                                if (newWeapon.melee) {
+                                    player.maxAmmo = 0;
+                                    player.ammo = 0;
+                                } else {
+                                    player.maxAmmo = newWeapon.maxAmmo;
+                                    player.ammo = player.maxAmmo;
+                                }
+                                player.reloading = false;
+                                applyPassiveCharms();
+                            }
+                        } else if (item.category === 'charm') {
+                            if (!playerCharms.includes(item.data.id) &&
+                                playerCharms.length < 3 &&
+                                scrap >= item.data.price) {
+                                scrap -= item.data.price;
+                                playerCharms.push(item.data.id);
+                                applyPassiveCharms();
+                                // Heal up to new max if thick_skin just bought
+                                if (item.data.id === 'thick_skin') {
+                                    player.health = Math.min(player.health + 25, player.maxHealth);
+                                }
+                            }
+                        }
+                        return true;
+                    }
+                }
+            }
+            return false;
+        }
+
         // Generate level
         function generateLevel(levelNum) {
             walls = [];
@@ -421,16 +838,16 @@
             let roomConfigs;
 
             if (isMobile) {
-                // Mobile layouts - vertical rooms
+                // Mobile layouts (360x640)
                 roomConfigs = [
-                    // Level 1 - Simple vertical rooms
+                    // 0 - Simple horizontal splits
                     [
                         { x: 0, y: 150, w: 200, h: 20 },
                         { x: 160, y: 280, w: 200, h: 20 },
                         { x: 0, y: 410, w: 200, h: 20 },
                         { x: 160, y: 540, w: 200, h: 20 },
                     ],
-                    // Level 2 - More complex
+                    // 1 - Cross corridors
                     [
                         { x: 120, y: 0, w: 20, h: 120 },
                         { x: 220, y: 80, w: 20, h: 120 },
@@ -441,7 +858,7 @@
                         { x: 180, y: 480, w: 20, h: 100 },
                         { x: 80, y: 560, w: 200, h: 20 },
                     ],
-                    // Level 3+ - Maze-like
+                    // 2 - Dense maze
                     [
                         { x: 80, y: 60, w: 20, h: 100 },
                         { x: 180, y: 0, w: 20, h: 120 },
@@ -454,12 +871,71 @@
                         { x: 0, y: 440, w: 180, h: 20 },
                         { x: 80, y: 500, w: 20, h: 80 },
                         { x: 160, y: 540, w: 120, h: 20 },
-                    ]
+                    ],
+                    // 3 - Arena with pillars
+                    [
+                        { x: 80, y: 150, w: 40, h: 40 },
+                        { x: 240, y: 150, w: 40, h: 40 },
+                        { x: 80, y: 350, w: 40, h: 40 },
+                        { x: 240, y: 350, w: 40, h: 40 },
+                        { x: 160, y: 250, w: 40, h: 40 },
+                        { x: 0, y: 480, w: 140, h: 20 },
+                        { x: 220, y: 480, w: 140, h: 20 },
+                    ],
+                    // 4 - Winding path
+                    [
+                        { x: 0, y: 100, w: 240, h: 20 },
+                        { x: 240, y: 100, w: 20, h: 120 },
+                        { x: 100, y: 220, w: 160, h: 20 },
+                        { x: 100, y: 220, w: 20, h: 120 },
+                        { x: 100, y: 340, w: 200, h: 20 },
+                        { x: 280, y: 340, w: 20, h: 120 },
+                        { x: 60, y: 460, w: 240, h: 20 },
+                    ],
+                    // 5 - Central chamber
+                    [
+                        { x: 100, y: 0, w: 20, h: 200 },
+                        { x: 240, y: 0, w: 20, h: 200 },
+                        { x: 100, y: 200, w: 20, h: 20 },
+                        { x: 240, y: 200, w: 20, h: 20 },
+                        { x: 0, y: 200, w: 100, h: 20 },
+                        { x: 260, y: 200, w: 100, h: 20 },
+                        { x: 100, y: 400, w: 20, h: 20 },
+                        { x: 240, y: 400, w: 20, h: 20 },
+                        { x: 100, y: 420, w: 20, h: 160 },
+                        { x: 240, y: 420, w: 20, h: 160 },
+                        { x: 0, y: 400, w: 100, h: 20 },
+                        { x: 260, y: 400, w: 100, h: 20 },
+                    ],
+                    // 6 - L-shaped rooms
+                    [
+                        { x: 180, y: 0, w: 20, h: 160 },
+                        { x: 0, y: 160, w: 130, h: 20 },
+                        { x: 100, y: 180, w: 20, h: 80 },
+                        { x: 0, y: 320, w: 120, h: 20 },
+                        { x: 200, y: 260, w: 20, h: 140 },
+                        { x: 200, y: 400, w: 160, h: 20 },
+                        { x: 120, y: 460, w: 20, h: 120 },
+                        { x: 0, y: 520, w: 120, h: 20 },
+                    ],
+                    // 7 - Scattered blocks
+                    [
+                        { x: 60, y: 80, w: 60, h: 20 },
+                        { x: 200, y: 60, w: 20, h: 80 },
+                        { x: 260, y: 140, w: 60, h: 20 },
+                        { x: 40, y: 220, w: 20, h: 80 },
+                        { x: 140, y: 200, w: 80, h: 20 },
+                        { x: 280, y: 280, w: 20, h: 80 },
+                        { x: 80, y: 360, w: 60, h: 20 },
+                        { x: 200, y: 380, w: 20, h: 80 },
+                        { x: 100, y: 480, w: 80, h: 20 },
+                        { x: 240, y: 520, w: 60, h: 20 },
+                    ],
                 ];
             } else {
-                // Desktop layouts
+                // Desktop layouts (640x480)
                 roomConfigs = [
-                    // Level 1 - Simple rooms
+                    // 0 - Two vertical dividers
                     [
                         { x: 200, y: 0, w: 20, h: 150 },
                         { x: 200, y: 200, w: 20, h: 280 },
@@ -467,7 +943,7 @@
                         { x: 420, y: 330, w: 20, h: 150 },
                         { x: 200, y: 300, w: 150, h: 20 },
                     ],
-                    // Level 2 - More complex
+                    // 1 - Grid rooms
                     [
                         { x: 150, y: 0, w: 20, h: 200 },
                         { x: 150, y: 250, w: 20, h: 180 },
@@ -478,7 +954,7 @@
                         { x: 150, y: 200, w: 100, h: 20 },
                         { x: 370, y: 250, w: 100, h: 20 },
                     ],
-                    // Level 3+ - Maze-like
+                    // 2 - Dense maze
                     [
                         { x: 100, y: 80, w: 200, h: 20 },
                         { x: 100, y: 80, w: 20, h: 150 },
@@ -491,11 +967,98 @@
                         { x: 100, y: 350, w: 200, h: 20 },
                         { x: 280, y: 350, w: 20, h: 80 },
                         { x: 450, y: 380, w: 20, h: 100 },
-                    ]
+                    ],
+                    // 3 - Arena with pillars
+                    [
+                        { x: 140, y: 100, w: 40, h: 40 },
+                        { x: 460, y: 100, w: 40, h: 40 },
+                        { x: 140, y: 340, w: 40, h: 40 },
+                        { x: 460, y: 340, w: 40, h: 40 },
+                        { x: 300, y: 200, w: 40, h: 40 },
+                    ],
+                    // 4 - Winding corridors
+                    [
+                        { x: 0, y: 100, w: 400, h: 20 },
+                        { x: 400, y: 100, w: 20, h: 120 },
+                        { x: 200, y: 220, w: 220, h: 20 },
+                        { x: 200, y: 220, w: 20, h: 100 },
+                        { x: 200, y: 320, w: 320, h: 20 },
+                        { x: 100, y: 380, w: 20, h: 100 },
+                        { x: 100, y: 380, w: 300, h: 20 },
+                    ],
+                    // 5 - Central chamber
+                    [
+                        { x: 180, y: 0, w: 20, h: 120 },
+                        { x: 440, y: 0, w: 20, h: 120 },
+                        { x: 180, y: 120, w: 280, h: 20 },
+                        { x: 180, y: 340, w: 280, h: 20 },
+                        { x: 180, y: 360, w: 20, h: 120 },
+                        { x: 440, y: 360, w: 20, h: 120 },
+                        { x: 280, y: 120, w: 20, h: 40 },
+                        { x: 340, y: 320, w: 20, h: 40 },
+                    ],
+                    // 6 - L-rooms and corridors
+                    [
+                        { x: 200, y: 0, w: 20, h: 80 },
+                        { x: 200, y: 130, w: 20, h: 70 },
+                        { x: 0, y: 200, w: 220, h: 20 },
+                        { x: 350, y: 100, w: 20, h: 200 },
+                        { x: 350, y: 100, w: 150, h: 20 },
+                        { x: 100, y: 300, w: 20, h: 180 },
+                        { x: 100, y: 300, w: 200, h: 20 },
+                        { x: 450, y: 250, w: 20, h: 130 },
+                        { x: 350, y: 380, w: 120, h: 20 },
+                        { x: 500, y: 380, w: 20, h: 100 },
+                    ],
+                    // 7 - Scattered blocks
+                    [
+                        { x: 100, y: 60, w: 80, h: 20 },
+                        { x: 300, y: 40, w: 20, h: 80 },
+                        { x: 450, y: 80, w: 80, h: 20 },
+                        { x: 60, y: 180, w: 20, h: 80 },
+                        { x: 200, y: 160, w: 100, h: 20 },
+                        { x: 400, y: 200, w: 20, h: 80 },
+                        { x: 530, y: 180, w: 20, h: 80 },
+                        { x: 120, y: 300, w: 80, h: 20 },
+                        { x: 280, y: 280, w: 20, h: 80 },
+                        { x: 450, y: 340, w: 80, h: 20 },
+                        { x: 160, y: 400, w: 100, h: 20 },
+                        { x: 360, y: 420, w: 20, h: 60 },
+                    ],
+                    // 8 - Ring layout
+                    [
+                        { x: 160, y: 80, w: 320, h: 20 },
+                        { x: 160, y: 80, w: 20, h: 130 },
+                        { x: 460, y: 80, w: 20, h: 130 },
+                        { x: 160, y: 280, w: 20, h: 130 },
+                        { x: 460, y: 280, w: 20, h: 130 },
+                        { x: 160, y: 390, w: 320, h: 20 },
+                        { x: 280, y: 180, w: 80, h: 20 },
+                        { x: 280, y: 290, w: 80, h: 20 },
+                    ],
+                    // 9 - Diagonal feel
+                    [
+                        { x: 80, y: 0, w: 20, h: 120 },
+                        { x: 80, y: 100, w: 120, h: 20 },
+                        { x: 200, y: 100, w: 20, h: 100 },
+                        { x: 200, y: 200, w: 140, h: 20 },
+                        { x: 320, y: 200, w: 20, h: 100 },
+                        { x: 320, y: 300, w: 160, h: 20 },
+                        { x: 460, y: 300, w: 20, h: 100 },
+                        { x: 200, y: 360, w: 260, h: 20 },
+                        { x: 100, y: 400, w: 20, h: 80 },
+                    ],
                 ];
             }
 
-            const configIndex = Math.min(levelNum - 1, roomConfigs.length - 1);
+            // Pick layout: level 1 always uses config 0, then rotate through all
+            let configIndex;
+            if (levelNum <= 1) {
+                configIndex = 0;
+            } else {
+                // Deterministic but varied selection based on level
+                configIndex = ((levelNum - 1) * 3 + levelNum) % roomConfigs.length;
+            }
             walls.push(...roomConfigs[configIndex]);
 
             // Get dungeon difficulty settings
@@ -642,8 +1205,60 @@
                     const cy = 40 + Math.random() * (H - 80);
                     const distToSpawn = Math.hypot(cx - player.x, cy - player.y);
                     if (!pointInWalls(cx, cy, 10, 10) && distToSpawn > 60) {
-                        pickups.push({ x: cx, y: cy, type: 'coin', width: 10, height: 10, value: 5 + Math.floor(levelNum / 2) });
+                        pickups.push({ x: cx, y: cy, type: 'coin', width: 10, height: 10, value: 1 });
                         break;
+                    }
+                }
+            }
+
+            // Generate floor decorations (pre-computed for performance)
+            floorDecorations = [];
+            const numDecos = isMobile ? 40 : 70;
+            for (let d = 0; d < numDecos; d++) {
+                const dx = 30 + Math.random() * (W - 60);
+                const dy = 30 + Math.random() * (H - 60);
+                if (!pointInWalls(dx, dy, 4, 4)) {
+                    const variant = Math.floor(Math.random() * 6);
+                    const size = 2 + Math.floor(Math.random() * 5);
+                    floorDecorations.push({ x: dx, y: dy, variant: variant, size: size });
+                }
+            }
+
+            // Generate large props (trees, pillars, stalagmites, etc.)
+            levelProps = [];
+            const numProps = isMobile ? 5 : 8;
+            for (let p = 0; p < numProps; p++) {
+                for (let attempt = 0; attempt < 30; attempt++) {
+                    const px = 40 + Math.random() * (W - 80);
+                    const py = 40 + Math.random() * (H - 80);
+                    // Must not be in walls, not near player spawn, not overlapping other props
+                    const distToSpawn = Math.hypot(px - player.x, py - player.y);
+                    if (!pointInWalls(px, py, 24, 24) && distToSpawn > 70) {
+                        let overlap = false;
+                        for (const existing of levelProps) {
+                            if (Math.hypot(px - existing.x, py - existing.y) < 40) {
+                                overlap = true;
+                                break;
+                            }
+                        }
+                        if (!overlap) {
+                            const propVariant = Math.floor(Math.random() * 4);
+                            const propSize = 8 + Math.floor(Math.random() * 10);
+                            levelProps.push({ x: px, y: py, variant: propVariant, size: propSize });
+                            break;
+                        }
+                    }
+                }
+            }
+
+            // Jungle: also generate grass patches (lots of them)
+            if (selectedDungeon === 'jungle') {
+                const numGrass = isMobile ? 30 : 50;
+                for (let g = 0; g < numGrass; g++) {
+                    const gx = 25 + Math.random() * (W - 50);
+                    const gy = 25 + Math.random() * (H - 50);
+                    if (!pointInWalls(gx, gy, 6, 6)) {
+                        floorDecorations.push({ x: gx, y: gy, variant: 10, size: 3 + Math.floor(Math.random() * 4) }); // variant 10 = grass
                     }
                 }
             }
@@ -660,6 +1275,1274 @@
             }
         }
 
+        // Draw floor decorations (called before walls/entities)
+        function drawFloorDecorations() {
+            for (const d of floorDecorations) {
+                if (selectedDungeon === 'jungle') {
+                    if (d.variant === 0) {
+                        // Small bush / fern
+                        ctx.fillStyle = '#1e4d18';
+                        ctx.fillRect(d.x - 3, d.y, 6, 3);
+                        ctx.fillStyle = '#2a6322';
+                        ctx.fillRect(d.x - 2, d.y - 2, 4, 3);
+                        ctx.fillStyle = '#3a7c33';
+                        ctx.fillRect(d.x - 1, d.y - 3, 2, 2);
+                    } else if (d.variant === 1) {
+                        // Fallen leaves
+                        ctx.fillStyle = '#3a5a1e';
+                        ctx.globalAlpha = 0.6;
+                        ctx.fillRect(d.x, d.y, 3, 2);
+                        ctx.fillRect(d.x + 4, d.y + 2, 2, 2);
+                        ctx.fillStyle = '#5a7a2e';
+                        ctx.fillRect(d.x - 2, d.y + 1, 2, 2);
+                        ctx.globalAlpha = 1;
+                    } else if (d.variant === 2) {
+                        // Mushroom
+                        ctx.fillStyle = '#5d3a1e';
+                        ctx.fillRect(d.x, d.y + 1, 2, 3);
+                        ctx.fillStyle = '#c84040';
+                        ctx.beginPath();
+                        ctx.arc(d.x + 1, d.y, 3, Math.PI, 0);
+                        ctx.fill();
+                        ctx.fillStyle = '#fff';
+                        ctx.fillRect(d.x - 1, d.y - 1, 1, 1);
+                        ctx.fillRect(d.x + 2, d.y - 2, 1, 1);
+                    } else if (d.variant === 3) {
+                        // Moss patch on ground
+                        ctx.fillStyle = '#1e4d18';
+                        ctx.globalAlpha = 0.4;
+                        ctx.beginPath();
+                        ctx.arc(d.x, d.y, d.size, 0, Math.PI * 2);
+                        ctx.fill();
+                        ctx.fillStyle = '#2d6b26';
+                        ctx.beginPath();
+                        ctx.arc(d.x + 1, d.y - 1, d.size * 0.6, 0, Math.PI * 2);
+                        ctx.fill();
+                        ctx.globalAlpha = 1;
+                    } else if (d.variant === 4) {
+                        // Small flowers
+                        ctx.fillStyle = '#2a5a20';
+                        ctx.fillRect(d.x, d.y, 1, 4);
+                        ctx.fillRect(d.x + 5, d.y + 1, 1, 3);
+                        const flowerColors = ['#e8e850', '#e06090', '#8060d0'];
+                        ctx.fillStyle = flowerColors[d.size % 3];
+                        ctx.fillRect(d.x - 1, d.y - 1, 3, 2);
+                        ctx.fillRect(d.x + 4, d.y, 3, 2);
+                    } else if (d.variant === 5) {
+                        // Tree roots / ground crack
+                        ctx.strokeStyle = '#1a3a12';
+                        ctx.globalAlpha = 0.5;
+                        ctx.lineWidth = 1;
+                        ctx.beginPath();
+                        ctx.moveTo(d.x - d.size, d.y);
+                        ctx.quadraticCurveTo(d.x, d.y - 2, d.x + d.size, d.y + 1);
+                        ctx.stroke();
+                        ctx.beginPath();
+                        ctx.moveTo(d.x, d.y);
+                        ctx.lineTo(d.x + 2, d.y + d.size);
+                        ctx.stroke();
+                        ctx.globalAlpha = 1;
+                    } else if (d.variant === 10) {
+                        // Grass tufts
+                        const blades = 3 + d.size;
+                        for (let b = 0; b < blades; b++) {
+                            const bx = d.x - d.size + b * (d.size * 2 / blades);
+                            const bladeH = 4 + (b * 3 + d.x) % 5;
+                            const sway = Math.sin(Date.now() / 1500 + bx * 0.3) * 1.5;
+                            ctx.strokeStyle = b % 3 === 0 ? '#3a8a30' : (b % 3 === 1 ? '#2d6b26' : '#4a9e40');
+                            ctx.lineWidth = 1;
+                            ctx.beginPath();
+                            ctx.moveTo(bx, d.y);
+                            ctx.quadraticCurveTo(bx + sway, d.y - bladeH * 0.6, bx + sway * 1.5, d.y - bladeH);
+                            ctx.stroke();
+                        }
+                    }
+
+                } else if (selectedDungeon === 'desert') {
+                    if (d.variant === 0) {
+                        // Sand ripples
+                        ctx.strokeStyle = '#4a3c28';
+                        ctx.globalAlpha = 0.3;
+                        ctx.lineWidth = 1;
+                        for (let r = 0; r < 3; r++) {
+                            ctx.beginPath();
+                            ctx.moveTo(d.x - 6, d.y + r * 4);
+                            ctx.quadraticCurveTo(d.x, d.y + r * 4 - 2, d.x + 6, d.y + r * 4);
+                            ctx.stroke();
+                        }
+                        ctx.globalAlpha = 1;
+                    } else if (d.variant === 1) {
+                        // Small rocks / rubble
+                        ctx.fillStyle = '#5a4a36';
+                        ctx.fillRect(d.x, d.y, 3, 2);
+                        ctx.fillStyle = '#6a5a46';
+                        ctx.fillRect(d.x + 4, d.y + 1, 2, 2);
+                        ctx.fillRect(d.x - 1, d.y + 2, 2, 1);
+                    } else if (d.variant === 2) {
+                        // Scattered bones
+                        ctx.fillStyle = '#d4c8a0';
+                        ctx.globalAlpha = 0.6;
+                        ctx.fillRect(d.x - 3, d.y, 6, 1);
+                        ctx.fillRect(d.x, d.y - 2, 1, 5);
+                        ctx.fillRect(d.x + 3, d.y - 1, 1, 3);
+                        ctx.globalAlpha = 1;
+                    } else if (d.variant === 3) {
+                        // Sand pile
+                        ctx.fillStyle = '#4a3c28';
+                        ctx.globalAlpha = 0.25;
+                        ctx.beginPath();
+                        ctx.arc(d.x, d.y, d.size + 1, 0, Math.PI * 2);
+                        ctx.fill();
+                        ctx.globalAlpha = 1;
+                    } else if (d.variant === 4) {
+                        // Cracked tile
+                        ctx.strokeStyle = '#5a4a36';
+                        ctx.globalAlpha = 0.3;
+                        ctx.lineWidth = 1;
+                        ctx.strokeRect(d.x - 4, d.y - 4, 8, 8);
+                        ctx.beginPath();
+                        ctx.moveTo(d.x - 4, d.y);
+                        ctx.lineTo(d.x + 2, d.y + 3);
+                        ctx.lineTo(d.x + 4, d.y - 1);
+                        ctx.stroke();
+                        ctx.globalAlpha = 1;
+                    } else {
+                        // Scarab beetle shape
+                        ctx.fillStyle = '#2a4a2a';
+                        ctx.globalAlpha = 0.35;
+                        ctx.beginPath();
+                        ctx.arc(d.x, d.y, 2, 0, Math.PI * 2);
+                        ctx.fill();
+                        ctx.fillRect(d.x - 3, d.y - 1, 1, 2);
+                        ctx.fillRect(d.x + 2, d.y - 1, 1, 2);
+                        ctx.globalAlpha = 1;
+                    }
+
+                } else if (selectedDungeon === 'ice') {
+                    if (d.variant === 0) {
+                        // Ice crack on floor
+                        ctx.strokeStyle = '#4a7a8f';
+                        ctx.globalAlpha = 0.4;
+                        ctx.lineWidth = 1;
+                        ctx.beginPath();
+                        ctx.moveTo(d.x - d.size, d.y);
+                        ctx.lineTo(d.x, d.y + 1);
+                        ctx.lineTo(d.x + d.size, d.y - 1);
+                        ctx.stroke();
+                        ctx.beginPath();
+                        ctx.moveTo(d.x, d.y + 1);
+                        ctx.lineTo(d.x - 2, d.y + d.size);
+                        ctx.stroke();
+                        ctx.beginPath();
+                        ctx.moveTo(d.x, d.y + 1);
+                        ctx.lineTo(d.x + 3, d.y + d.size - 1);
+                        ctx.stroke();
+                        ctx.globalAlpha = 1;
+                    } else if (d.variant === 1) {
+                        // Frozen puddle
+                        ctx.fillStyle = '#3a6a7f';
+                        ctx.globalAlpha = 0.2;
+                        ctx.beginPath();
+                        ctx.ellipse(d.x, d.y, d.size + 2, d.size, 0, 0, Math.PI * 2);
+                        ctx.fill();
+                        // Shine
+                        ctx.fillStyle = '#8ecae6';
+                        ctx.globalAlpha = 0.3;
+                        ctx.fillRect(d.x - 2, d.y - 1, 3, 1);
+                        ctx.globalAlpha = 1;
+                    } else if (d.variant === 2) {
+                        // Snow pile
+                        ctx.fillStyle = '#8aaab8';
+                        ctx.globalAlpha = 0.25;
+                        ctx.beginPath();
+                        ctx.arc(d.x, d.y, d.size, 0, Math.PI * 2);
+                        ctx.fill();
+                        ctx.fillStyle = '#a0c0d0';
+                        ctx.beginPath();
+                        ctx.arc(d.x - 1, d.y - 1, d.size * 0.5, 0, Math.PI * 2);
+                        ctx.fill();
+                        ctx.globalAlpha = 1;
+                    } else if (d.variant === 3) {
+                        // Ice crystal on floor
+                        ctx.strokeStyle = '#8ecae6';
+                        ctx.globalAlpha = 0.4;
+                        ctx.lineWidth = 1;
+                        for (let a = 0; a < 3; a++) {
+                            const ang = a * Math.PI / 3;
+                            ctx.beginPath();
+                            ctx.moveTo(d.x - Math.cos(ang) * 4, d.y - Math.sin(ang) * 4);
+                            ctx.lineTo(d.x + Math.cos(ang) * 4, d.y + Math.sin(ang) * 4);
+                            ctx.stroke();
+                        }
+                        ctx.globalAlpha = 1;
+                    } else if (d.variant === 4) {
+                        // Frost pattern
+                        ctx.fillStyle = '#6a9aaf';
+                        ctx.globalAlpha = 0.15;
+                        ctx.fillRect(d.x - 3, d.y - 3, 6, 6);
+                        ctx.fillStyle = '#8ecae6';
+                        ctx.fillRect(d.x - 1, d.y - 4, 2, 8);
+                        ctx.fillRect(d.x - 4, d.y - 1, 8, 2);
+                        ctx.globalAlpha = 1;
+                    } else {
+                        // Frozen bones
+                        ctx.fillStyle = '#90b0c0';
+                        ctx.globalAlpha = 0.4;
+                        ctx.fillRect(d.x - 3, d.y, 6, 1);
+                        ctx.fillRect(d.x, d.y - 2, 1, 5);
+                        ctx.globalAlpha = 1;
+                    }
+
+                } else if (selectedDungeon === 'volcano') {
+                    if (d.variant === 0) {
+                        // Lava crack in floor
+                        ctx.strokeStyle = '#ff4500';
+                        ctx.globalAlpha = 0.4 + Math.sin(Date.now() / 1000 + d.x) * 0.15;
+                        ctx.lineWidth = 1;
+                        ctx.beginPath();
+                        ctx.moveTo(d.x - d.size, d.y + 1);
+                        ctx.lineTo(d.x - 1, d.y - 1);
+                        ctx.lineTo(d.x + d.size, d.y);
+                        ctx.stroke();
+                        ctx.beginPath();
+                        ctx.moveTo(d.x - 1, d.y - 1);
+                        ctx.lineTo(d.x + 1, d.y + d.size);
+                        ctx.stroke();
+                        ctx.globalAlpha = 1;
+                    } else if (d.variant === 1) {
+                        // Scorch mark
+                        ctx.fillStyle = '#1a0e08';
+                        ctx.globalAlpha = 0.3;
+                        ctx.beginPath();
+                        ctx.ellipse(d.x, d.y, d.size + 1, d.size, d.x % 3, 0, Math.PI * 2);
+                        ctx.fill();
+                        ctx.globalAlpha = 1;
+                    } else if (d.variant === 2) {
+                        // Small lava pool
+                        ctx.fillStyle = '#cc3300';
+                        ctx.globalAlpha = 0.35 + Math.sin(Date.now() / 800 + d.y) * 0.1;
+                        ctx.beginPath();
+                        ctx.ellipse(d.x, d.y, d.size, d.size - 1, 0, 0, Math.PI * 2);
+                        ctx.fill();
+                        ctx.fillStyle = '#ff6600';
+                        ctx.beginPath();
+                        ctx.ellipse(d.x, d.y, d.size * 0.5, d.size * 0.4, 0, 0, Math.PI * 2);
+                        ctx.fill();
+                        ctx.globalAlpha = 1;
+                    } else if (d.variant === 3) {
+                        // Cooled lava rock
+                        ctx.fillStyle = '#2a1a14';
+                        ctx.fillRect(d.x - 2, d.y - 1, 4, 3);
+                        ctx.fillStyle = '#3a2a20';
+                        ctx.fillRect(d.x - 1, d.y - 2, 3, 2);
+                    } else if (d.variant === 4) {
+                        // Ash patch
+                        ctx.fillStyle = '#1a1210';
+                        ctx.globalAlpha = 0.3;
+                        ctx.beginPath();
+                        ctx.arc(d.x, d.y, d.size + 1, 0, Math.PI * 2);
+                        ctx.fill();
+                        ctx.globalAlpha = 1;
+                    } else {
+                        // Glowing ember in floor
+                        const pulse = Math.sin(Date.now() / 500 + d.x * d.y) * 0.3 + 0.5;
+                        ctx.fillStyle = '#ff4500';
+                        ctx.globalAlpha = pulse * 0.4;
+                        ctx.beginPath();
+                        ctx.arc(d.x, d.y, 2, 0, Math.PI * 2);
+                        ctx.fill();
+                        ctx.globalAlpha = 1;
+                    }
+
+                } else {
+                    // Dark Dungeon
+                    if (d.variant === 0) {
+                        // Cracked stone tiles
+                        ctx.strokeStyle = '#3d3d5a';
+                        ctx.globalAlpha = 0.3;
+                        ctx.lineWidth = 1;
+                        ctx.strokeRect(d.x - 5, d.y - 5, 10, 10);
+                        ctx.beginPath();
+                        ctx.moveTo(d.x - 5, d.y + 2);
+                        ctx.lineTo(d.x, d.y - 1);
+                        ctx.lineTo(d.x + 5, d.y + 1);
+                        ctx.stroke();
+                        ctx.globalAlpha = 1;
+                    } else if (d.variant === 1) {
+                        // Rubble pile
+                        ctx.fillStyle = '#4a4a68';
+                        ctx.fillRect(d.x - 2, d.y, 3, 2);
+                        ctx.fillRect(d.x + 1, d.y - 1, 2, 2);
+                        ctx.fillStyle = '#3a3a58';
+                        ctx.fillRect(d.x - 1, d.y + 1, 4, 2);
+                    } else if (d.variant === 2) {
+                        // Old bones
+                        ctx.fillStyle = '#8888a0';
+                        ctx.globalAlpha = 0.4;
+                        ctx.fillRect(d.x - 4, d.y, 8, 1);
+                        ctx.fillRect(d.x - 1, d.y - 3, 1, 7);
+                        // Skull
+                        ctx.beginPath();
+                        ctx.arc(d.x + 4, d.y - 1, 2, 0, Math.PI * 2);
+                        ctx.fill();
+                        ctx.globalAlpha = 1;
+                    } else if (d.variant === 3) {
+                        // Puddle / water stain
+                        ctx.fillStyle = '#2a2a44';
+                        ctx.globalAlpha = 0.3;
+                        ctx.beginPath();
+                        ctx.ellipse(d.x, d.y, d.size + 1, d.size - 1, 0, 0, Math.PI * 2);
+                        ctx.fill();
+                        ctx.fillStyle = '#3a3a5a';
+                        ctx.globalAlpha = 0.15;
+                        ctx.fillRect(d.x - 1, d.y - 1, 2, 1);
+                        ctx.globalAlpha = 1;
+                    } else if (d.variant === 4) {
+                        // Chains on floor
+                        ctx.strokeStyle = '#6a6a82';
+                        ctx.globalAlpha = 0.3;
+                        ctx.lineWidth = 1;
+                        for (let c = 0; c < 3; c++) {
+                            ctx.beginPath();
+                            ctx.arc(d.x + c * 4 - 4, d.y, 2, 0, Math.PI * 2);
+                            ctx.stroke();
+                        }
+                        ctx.globalAlpha = 1;
+                    } else {
+                        // Cobweb corner
+                        ctx.strokeStyle = '#5a5a72';
+                        ctx.globalAlpha = 0.2;
+                        ctx.lineWidth = 1;
+                        ctx.beginPath();
+                        ctx.moveTo(d.x - 5, d.y - 5);
+                        ctx.quadraticCurveTo(d.x, d.y - 2, d.x + 5, d.y - 5);
+                        ctx.stroke();
+                        ctx.beginPath();
+                        ctx.moveTo(d.x - 5, d.y - 5);
+                        ctx.quadraticCurveTo(d.x - 2, d.y, d.x - 5, d.y + 5);
+                        ctx.stroke();
+                        ctx.beginPath();
+                        ctx.moveTo(d.x - 4, d.y - 3);
+                        ctx.lineTo(d.x - 2, d.y - 1);
+                        ctx.stroke();
+                        ctx.globalAlpha = 1;
+                    }
+                }
+            }
+        }
+
+        // Draw large level props (trees, pillars, etc.)
+        function drawLevelProps() {
+            for (const p of levelProps) {
+                if (selectedDungeon === 'jungle') {
+                    if (p.variant === 0 || p.variant === 1) {
+                        // Tree
+                        const trunkH = p.size + 8;
+                        const canopyR = p.size * 0.8 + 4;
+                        // Shadow
+                        ctx.fillStyle = '#0a1a08';
+                        ctx.globalAlpha = 0.2;
+                        ctx.beginPath();
+                        ctx.ellipse(p.x + 3, p.y + 2, canopyR + 2, canopyR * 0.5, 0, 0, Math.PI * 2);
+                        ctx.fill();
+                        ctx.globalAlpha = 1;
+                        // Trunk
+                        ctx.fillStyle = '#4a3520';
+                        ctx.fillRect(p.x - 3, p.y - trunkH + canopyR * 0.5, 6, trunkH);
+                        // Bark detail
+                        ctx.fillStyle = '#3a2a18';
+                        ctx.fillRect(p.x - 2, p.y - trunkH + canopyR * 0.5 + 4, 2, 3);
+                        ctx.fillRect(p.x + 1, p.y - trunkH + canopyR * 0.5 + 10, 2, 2);
+                        // Roots
+                        ctx.fillStyle = '#4a3520';
+                        ctx.fillRect(p.x - 6, p.y - 2, 4, 3);
+                        ctx.fillRect(p.x + 3, p.y - 1, 5, 2);
+                        // Canopy layers (overlapping circles)
+                        const canopyY = p.y - trunkH + canopyR * 0.3;
+                        ctx.fillStyle = '#1e5a18';
+                        ctx.beginPath();
+                        ctx.arc(p.x - canopyR * 0.3, canopyY + 2, canopyR * 0.7, 0, Math.PI * 2);
+                        ctx.fill();
+                        ctx.fillStyle = '#2a7322';
+                        ctx.beginPath();
+                        ctx.arc(p.x + canopyR * 0.2, canopyY - 1, canopyR * 0.8, 0, Math.PI * 2);
+                        ctx.fill();
+                        ctx.fillStyle = '#358a2e';
+                        ctx.beginPath();
+                        ctx.arc(p.x, canopyY - 3, canopyR * 0.6, 0, Math.PI * 2);
+                        ctx.fill();
+                        // Highlight dapples
+                        ctx.fillStyle = '#4aaa40';
+                        ctx.globalAlpha = 0.5;
+                        ctx.beginPath();
+                        ctx.arc(p.x - 3, canopyY - 5, canopyR * 0.25, 0, Math.PI * 2);
+                        ctx.fill();
+                        ctx.beginPath();
+                        ctx.arc(p.x + 4, canopyY - 2, canopyR * 0.2, 0, Math.PI * 2);
+                        ctx.fill();
+                        ctx.globalAlpha = 1;
+                        if (p.variant === 1) {
+                            // Variant 1: hanging fruit or flowers
+                            ctx.fillStyle = '#e06050';
+                            ctx.beginPath();
+                            ctx.arc(p.x - canopyR * 0.4, canopyY + canopyR * 0.5, 2, 0, Math.PI * 2);
+                            ctx.fill();
+                            ctx.fillStyle = '#e0c040';
+                            ctx.beginPath();
+                            ctx.arc(p.x + canopyR * 0.3, canopyY + canopyR * 0.6, 2, 0, Math.PI * 2);
+                            ctx.fill();
+                        }
+                    } else if (p.variant === 2) {
+                        // Palm tree
+                        const trunkH = p.size + 10;
+                        // Shadow
+                        ctx.fillStyle = '#0a1a08';
+                        ctx.globalAlpha = 0.15;
+                        ctx.beginPath();
+                        ctx.ellipse(p.x + 4, p.y + 2, 12, 5, 0, 0, Math.PI * 2);
+                        ctx.fill();
+                        ctx.globalAlpha = 1;
+                        // Curved trunk
+                        ctx.strokeStyle = '#5a4a30';
+                        ctx.lineWidth = 5;
+                        ctx.beginPath();
+                        ctx.moveTo(p.x, p.y);
+                        ctx.quadraticCurveTo(p.x + 4, p.y - trunkH * 0.5, p.x + 2, p.y - trunkH);
+                        ctx.stroke();
+                        // Trunk rings
+                        ctx.strokeStyle = '#4a3a22';
+                        ctx.lineWidth = 1;
+                        for (let r = 5; r < trunkH - 3; r += 5) {
+                            ctx.beginPath();
+                            const rx = p.x + 4 * Math.sin(r / trunkH * Math.PI);
+                            ctx.moveTo(rx - 3, p.y - r);
+                            ctx.lineTo(rx + 3, p.y - r);
+                            ctx.stroke();
+                        }
+                        // Palm fronds
+                        const topX = p.x + 2;
+                        const topY = p.y - trunkH;
+                        const frondAngles = [-2.4, -1.8, -1.0, -0.3, 0.3, 1.0];
+                        for (const fa of frondAngles) {
+                            const sway = Math.sin(Date.now() / 2000 + fa * 2) * 0.1;
+                            ctx.strokeStyle = '#2d7826';
+                            ctx.lineWidth = 2;
+                            ctx.beginPath();
+                            ctx.moveTo(topX, topY);
+                            const endX = topX + Math.cos(fa + sway) * 16;
+                            const endY = topY + Math.sin(fa + sway) * 14;
+                            ctx.quadraticCurveTo(topX + Math.cos(fa) * 8, topY + Math.sin(fa) * 6 - 2, endX, endY);
+                            ctx.stroke();
+                            // Leaf segments
+                            ctx.strokeStyle = '#3a9030';
+                            ctx.lineWidth = 1;
+                            for (let seg = 0.3; seg < 0.9; seg += 0.2) {
+                                const sx = topX + (endX - topX) * seg;
+                                const sy = topY + (endY - topY) * seg - (1 - seg) * 2;
+                                ctx.beginPath();
+                                ctx.moveTo(sx, sy);
+                                ctx.lineTo(sx + Math.cos(fa + 1.2) * 4, sy + Math.sin(fa + 1.2) * 4);
+                                ctx.stroke();
+                                ctx.beginPath();
+                                ctx.moveTo(sx, sy);
+                                ctx.lineTo(sx + Math.cos(fa - 1.2) * 4, sy + Math.sin(fa - 1.2) * 4);
+                                ctx.stroke();
+                            }
+                        }
+                        // Coconuts
+                        ctx.fillStyle = '#5a4020';
+                        ctx.beginPath();
+                        ctx.arc(topX - 2, topY + 3, 2, 0, Math.PI * 2);
+                        ctx.fill();
+                        ctx.beginPath();
+                        ctx.arc(topX + 2, topY + 2, 2, 0, Math.PI * 2);
+                        ctx.fill();
+                    } else {
+                        // Large rock / temple ruin
+                        ctx.fillStyle = '#5a6a50';
+                        ctx.fillRect(p.x - p.size * 0.5, p.y - p.size * 0.3, p.size, p.size * 0.6);
+                        ctx.fillStyle = '#4a5a40';
+                        ctx.fillRect(p.x - p.size * 0.4, p.y - p.size * 0.5, p.size * 0.8, p.size * 0.3);
+                        // Moss on top
+                        ctx.fillStyle = '#2d6b26';
+                        ctx.fillRect(p.x - p.size * 0.4, p.y - p.size * 0.5, p.size * 0.6, 2);
+                        // Vine on side
+                        ctx.fillStyle = '#3a7c33';
+                        ctx.fillRect(p.x + p.size * 0.4, p.y - p.size * 0.3, 2, p.size * 0.5);
+                        ctx.fillStyle = '#4a9e40';
+                        ctx.fillRect(p.x + p.size * 0.4 - 2, p.y - p.size * 0.1, 3, 2);
+                    }
+
+                } else if (selectedDungeon === 'desert') {
+                    if (p.variant === 0) {
+                        // Broken pillar
+                        ctx.fillStyle = '#a08a60';
+                        ctx.fillRect(p.x - 5, p.y - p.size, 10, p.size);
+                        ctx.fillStyle = '#b8a070';
+                        ctx.fillRect(p.x - 7, p.y - p.size, 14, 4);
+                        ctx.fillRect(p.x - 7, p.y - 3, 14, 3);
+                        // Cracks
+                        ctx.strokeStyle = '#806a40';
+                        ctx.lineWidth = 1;
+                        ctx.beginPath();
+                        ctx.moveTo(p.x - 3, p.y - p.size);
+                        ctx.lineTo(p.x + 1, p.y - p.size + 6);
+                        ctx.lineTo(p.x - 1, p.y - p.size + 12);
+                        ctx.stroke();
+                        // Sand at base
+                        ctx.fillStyle = '#4a3c28';
+                        ctx.globalAlpha = 0.3;
+                        ctx.beginPath();
+                        ctx.ellipse(p.x, p.y + 1, 10, 3, 0, 0, Math.PI * 2);
+                        ctx.fill();
+                        ctx.globalAlpha = 1;
+                    } else if (p.variant === 1) {
+                        // Sarcophagus
+                        ctx.fillStyle = '#8a7a50';
+                        ctx.fillRect(p.x - 6, p.y - 10, 12, 20);
+                        ctx.fillStyle = '#a08a60';
+                        ctx.fillRect(p.x - 7, p.y - 11, 14, 4);
+                        ctx.fillRect(p.x - 7, p.y + 7, 14, 4);
+                        ctx.fillStyle = '#c4a35a';
+                        ctx.globalAlpha = 0.4;
+                        ctx.fillRect(p.x - 3, p.y - 7, 6, 14);
+                        ctx.globalAlpha = 1;
+                        // Eye detail
+                        ctx.fillStyle = '#4a3a20';
+                        ctx.fillRect(p.x - 2, p.y - 4, 2, 2);
+                        ctx.fillRect(p.x + 1, p.y - 4, 2, 2);
+                    } else if (p.variant === 2) {
+                        // Pile of urns
+                        ctx.fillStyle = '#8a6a40';
+                        ctx.beginPath();
+                        ctx.arc(p.x - 4, p.y, 5, 0, Math.PI * 2);
+                        ctx.fill();
+                        ctx.fillStyle = '#9a7a50';
+                        ctx.beginPath();
+                        ctx.arc(p.x + 5, p.y + 1, 4, 0, Math.PI * 2);
+                        ctx.fill();
+                        // Broken one
+                        ctx.fillStyle = '#7a5a30';
+                        ctx.beginPath();
+                        ctx.arc(p.x, p.y - 6, 3, Math.PI, 0);
+                        ctx.fill();
+                        // Sand spilling
+                        ctx.fillStyle = '#c4a35a';
+                        ctx.globalAlpha = 0.3;
+                        ctx.fillRect(p.x - 1, p.y - 3, 3, 5);
+                        ctx.globalAlpha = 1;
+                    } else {
+                        // Rock formation
+                        ctx.fillStyle = '#7a6a4a';
+                        ctx.beginPath();
+                        ctx.moveTo(p.x - 8, p.y + 3);
+                        ctx.lineTo(p.x - 3, p.y - p.size * 0.5);
+                        ctx.lineTo(p.x + 4, p.y - p.size * 0.3);
+                        ctx.lineTo(p.x + 8, p.y + 3);
+                        ctx.closePath();
+                        ctx.fill();
+                        ctx.fillStyle = '#8a7a5a';
+                        ctx.fillRect(p.x - 2, p.y - p.size * 0.5 + 2, 4, 3);
+                    }
+
+                } else if (selectedDungeon === 'ice') {
+                    if (p.variant === 0) {
+                        // Ice stalagmite
+                        ctx.fillStyle = '#7ab0cc';
+                        ctx.beginPath();
+                        ctx.moveTo(p.x - 5, p.y + 2);
+                        ctx.lineTo(p.x - 1, p.y - p.size);
+                        ctx.lineTo(p.x + 1, p.y - p.size);
+                        ctx.lineTo(p.x + 5, p.y + 2);
+                        ctx.closePath();
+                        ctx.fill();
+                        // Shine
+                        ctx.fillStyle = '#b0d8e8';
+                        ctx.fillRect(p.x - 1, p.y - p.size + 3, 2, p.size - 5);
+                        ctx.fillStyle = '#d4eef8';
+                        ctx.fillRect(p.x, p.y - p.size + 5, 1, p.size * 0.4);
+                    } else if (p.variant === 1) {
+                        // Frozen boulder
+                        ctx.fillStyle = '#5a7a8a';
+                        ctx.beginPath();
+                        ctx.arc(p.x, p.y, p.size * 0.5, 0, Math.PI * 2);
+                        ctx.fill();
+                        ctx.fillStyle = '#8aaab8';
+                        ctx.beginPath();
+                        ctx.arc(p.x - 2, p.y - 2, p.size * 0.3, 0, Math.PI * 2);
+                        ctx.fill();
+                        // Ice overlay
+                        ctx.fillStyle = '#aadcee';
+                        ctx.globalAlpha = 0.3;
+                        ctx.beginPath();
+                        ctx.arc(p.x, p.y, p.size * 0.55, 0, Math.PI * 2);
+                        ctx.fill();
+                        ctx.globalAlpha = 1;
+                    } else if (p.variant === 2) {
+                        // Ice crystal cluster
+                        ctx.fillStyle = '#8ecae6';
+                        for (let c = 0; c < 4; c++) {
+                            const ang = c * Math.PI / 2 + 0.3;
+                            const len = p.size * 0.4 + c * 2;
+                            ctx.beginPath();
+                            ctx.moveTo(p.x - Math.cos(ang) * 2, p.y - Math.sin(ang) * 2);
+                            ctx.lineTo(p.x + Math.cos(ang + 0.15) * len, p.y + Math.sin(ang + 0.15) * len);
+                            ctx.lineTo(p.x + Math.cos(ang - 0.15) * len, p.y + Math.sin(ang - 0.15) * len);
+                            ctx.closePath();
+                            ctx.fill();
+                        }
+                        ctx.fillStyle = '#d4eef8';
+                        ctx.beginPath();
+                        ctx.arc(p.x, p.y, 2, 0, Math.PI * 2);
+                        ctx.fill();
+                    } else {
+                        // Snowdrift
+                        ctx.fillStyle = '#8aaab8';
+                        ctx.globalAlpha = 0.4;
+                        ctx.beginPath();
+                        ctx.ellipse(p.x, p.y, p.size, p.size * 0.4, 0, 0, Math.PI * 2);
+                        ctx.fill();
+                        ctx.fillStyle = '#a0c0d0';
+                        ctx.beginPath();
+                        ctx.ellipse(p.x - 2, p.y - 1, p.size * 0.6, p.size * 0.25, 0, 0, Math.PI * 2);
+                        ctx.fill();
+                        ctx.globalAlpha = 1;
+                    }
+
+                } else if (selectedDungeon === 'volcano') {
+                    if (p.variant === 0) {
+                        // Obsidian spike
+                        ctx.fillStyle = '#1a1210';
+                        ctx.beginPath();
+                        ctx.moveTo(p.x - 4, p.y + 2);
+                        ctx.lineTo(p.x, p.y - p.size);
+                        ctx.lineTo(p.x + 4, p.y + 2);
+                        ctx.closePath();
+                        ctx.fill();
+                        ctx.fillStyle = '#2a2220';
+                        ctx.fillRect(p.x - 1, p.y - p.size + 4, 2, p.size * 0.3);
+                        // Red glow at base
+                        ctx.fillStyle = '#ff4500';
+                        ctx.globalAlpha = 0.2 + Math.sin(Date.now() / 1000 + p.x) * 0.1;
+                        ctx.beginPath();
+                        ctx.arc(p.x, p.y + 2, 6, 0, Math.PI * 2);
+                        ctx.fill();
+                        ctx.globalAlpha = 1;
+                    } else if (p.variant === 1) {
+                        // Lava pool (larger)
+                        const pulse = Math.sin(Date.now() / 900 + p.x * p.y) * 0.1;
+                        ctx.fillStyle = '#8b2500';
+                        ctx.globalAlpha = 0.5 + pulse;
+                        ctx.beginPath();
+                        ctx.ellipse(p.x, p.y, p.size * 0.7, p.size * 0.5, 0, 0, Math.PI * 2);
+                        ctx.fill();
+                        ctx.fillStyle = '#cc4400';
+                        ctx.beginPath();
+                        ctx.ellipse(p.x, p.y, p.size * 0.4, p.size * 0.3, 0, 0, Math.PI * 2);
+                        ctx.fill();
+                        ctx.fillStyle = '#ff6600';
+                        ctx.beginPath();
+                        ctx.ellipse(p.x + 1, p.y - 1, p.size * 0.2, p.size * 0.15, 0, 0, Math.PI * 2);
+                        ctx.fill();
+                        ctx.globalAlpha = 1;
+                    } else if (p.variant === 2) {
+                        // Charred tree stump
+                        ctx.fillStyle = '#1a1008';
+                        ctx.fillRect(p.x - 5, p.y - 6, 10, 8);
+                        ctx.fillStyle = '#2a1a10';
+                        ctx.fillRect(p.x - 6, p.y - 3, 12, 5);
+                        // Embers
+                        ctx.fillStyle = '#ff4500';
+                        ctx.globalAlpha = 0.4 + Math.sin(Date.now() / 600 + p.y) * 0.2;
+                        ctx.fillRect(p.x - 2, p.y - 7, 1, 2);
+                        ctx.fillRect(p.x + 2, p.y - 6, 1, 1);
+                        ctx.globalAlpha = 1;
+                    } else {
+                        // Volcanic boulder
+                        ctx.fillStyle = '#3a2218';
+                        ctx.beginPath();
+                        ctx.arc(p.x, p.y, p.size * 0.5, 0, Math.PI * 2);
+                        ctx.fill();
+                        ctx.fillStyle = '#4a3228';
+                        ctx.beginPath();
+                        ctx.arc(p.x - 2, p.y - 2, p.size * 0.3, 0, Math.PI * 2);
+                        ctx.fill();
+                        // Lava crack
+                        ctx.strokeStyle = '#ff4500';
+                        ctx.globalAlpha = 0.4;
+                        ctx.lineWidth = 1;
+                        ctx.beginPath();
+                        ctx.moveTo(p.x - p.size * 0.3, p.y);
+                        ctx.lineTo(p.x + p.size * 0.3, p.y - 1);
+                        ctx.stroke();
+                        ctx.globalAlpha = 1;
+                    }
+
+                } else {
+                    // Dark Dungeon
+                    if (p.variant === 0) {
+                        // Stone pillar
+                        ctx.fillStyle = '#5a5a78';
+                        ctx.fillRect(p.x - 5, p.y - p.size, 10, p.size);
+                        // Capital
+                        ctx.fillStyle = '#6a6a88';
+                        ctx.fillRect(p.x - 7, p.y - p.size, 14, 4);
+                        // Base
+                        ctx.fillRect(p.x - 7, p.y - 3, 14, 3);
+                        // Highlight
+                        ctx.fillStyle = '#7a7a98';
+                        ctx.fillRect(p.x - 4, p.y - p.size + 4, 2, p.size - 7);
+                    } else if (p.variant === 1) {
+                        // Barrel
+                        ctx.fillStyle = '#5a4030';
+                        ctx.fillRect(p.x - 5, p.y - 7, 10, 14);
+                        ctx.fillStyle = '#6a5040';
+                        ctx.fillRect(p.x - 6, p.y - 5, 12, 3);
+                        ctx.fillRect(p.x - 6, p.y + 2, 12, 3);
+                        // Metal bands
+                        ctx.fillStyle = '#4a4a5a';
+                        ctx.fillRect(p.x - 6, p.y - 7, 12, 1);
+                        ctx.fillRect(p.x - 6, p.y + 6, 12, 1);
+                    } else if (p.variant === 2) {
+                        // Crate
+                        ctx.fillStyle = '#5a4830';
+                        ctx.fillRect(p.x - 7, p.y - 7, 14, 14);
+                        ctx.fillStyle = '#4a3820';
+                        ctx.fillRect(p.x - 7, p.y, 14, 1);
+                        ctx.fillRect(p.x, p.y - 7, 1, 14);
+                        // Nail
+                        ctx.fillStyle = '#888';
+                        ctx.fillRect(p.x - 4, p.y - 4, 1, 1);
+                        ctx.fillRect(p.x + 3, p.y + 3, 1, 1);
+                    } else {
+                        // Broken statue
+                        ctx.fillStyle = '#5a5a6a';
+                        // Base
+                        ctx.fillRect(p.x - 6, p.y - 3, 12, 5);
+                        // Broken torso
+                        ctx.fillRect(p.x - 4, p.y - 10, 8, 8);
+                        // One arm stub
+                        ctx.fillRect(p.x + 4, p.y - 8, 4, 3);
+                        // Rubble
+                        ctx.fillStyle = '#4a4a5a';
+                        ctx.fillRect(p.x - 8, p.y + 1, 3, 2);
+                        ctx.fillRect(p.x + 6, p.y + 2, 4, 2);
+                    }
+                }
+            }
+        }
+
+        // Draw dungeon-specific wall decorations
+        function drawWallDecorations(wall) {
+            const wx = Math.floor(wall.x);
+            const wy = Math.floor(wall.y);
+            const ww = wall.w;
+            const wh = wall.h;
+            const isHoriz = wh <= 20;
+            const isVert = ww <= 20;
+
+            if (selectedDungeon === 'jungle') {
+                // Vines hanging from horizontal walls
+                if (isHoriz) {
+                    ctx.fillStyle = '#3a7c33';
+                    for (let vx = wx + 6; vx < wx + ww - 6; vx += 14 + ((vx * 7 + wy) % 10)) {
+                        const vineLen = 10 + ((vx * 3 + wy * 5) % 18);
+                        const sway = Math.sin(Date.now() / 2000 + vx * 0.1) * 2;
+                        ctx.fillRect(vx + sway * 0.3, wy + wh, 2, vineLen);
+                        // Leaves at intervals
+                        ctx.fillStyle = '#4a9e40';
+                        ctx.fillRect(vx - 3 + sway * 0.5, wy + wh + 3, 4, 3);
+                        ctx.fillRect(vx + 1 + sway * 0.7, wy + wh + 8, 5, 3);
+                        if (vineLen > 12) {
+                            ctx.fillRect(vx - 2 + sway, wy + wh + 14, 3, 2);
+                            ctx.fillStyle = '#5ab84e';
+                            ctx.fillRect(vx + 2, wy + wh + 12, 4, 2);
+                        }
+                        if (vineLen > 18) {
+                            ctx.fillStyle = '#3a7c33';
+                            ctx.fillRect(vx - 1, wy + wh + 18, 3, 3);
+                        }
+                        ctx.fillStyle = '#3a7c33';
+                    }
+                    // Hanging vines on TOP of wall
+                    for (let vx = wx + 12; vx < wx + ww - 12; vx += 22 + ((vx * 11 + wy) % 14)) {
+                        ctx.fillStyle = '#2d6b26';
+                        const topLen = 5 + ((vx * 5 + wy) % 8);
+                        ctx.fillRect(vx, wy - topLen, 1, topLen);
+                        ctx.fillStyle = '#4a9e40';
+                        ctx.fillRect(vx - 2, wy - topLen + 2, 3, 2);
+                    }
+                }
+                if (isVert) {
+                    // Vines on both sides of vertical walls
+                    for (let vy = wy + 8; vy < wy + wh - 8; vy += 16 + ((wx * 3 + vy) % 8)) {
+                        const vineLen = 8 + ((wx * 5 + vy * 3) % 12);
+                        ctx.fillStyle = '#3a7c33';
+                        // Right side
+                        ctx.fillRect(wx + ww, vy, vineLen, 2);
+                        ctx.fillStyle = '#4a9e40';
+                        ctx.fillRect(wx + ww + 3, vy - 2, 3, 3);
+                        ctx.fillRect(wx + ww + 7, vy + 1, 3, 2);
+                        // Left side
+                        ctx.fillStyle = '#3a7c33';
+                        const vineLen2 = 5 + ((wx * 7 + vy) % 8);
+                        ctx.fillRect(wx - vineLen2, vy + 5, vineLen2, 2);
+                        ctx.fillStyle = '#4a9e40';
+                        ctx.fillRect(wx - vineLen2 + 1, vy + 3, 3, 3);
+                    }
+                }
+                // Moss/lichen patches on all walls
+                ctx.fillStyle = '#2d6b26';
+                ctx.globalAlpha = 0.5;
+                for (let mx = wx + 3; mx < wx + ww - 4; mx += 10 + ((mx + wy) % 6)) {
+                    ctx.fillRect(mx, wy + 1, 4 + ((mx * 3) % 4), 3);
+                    ctx.fillRect(mx + 1, wy + wh - 4, 3 + ((mx * 7) % 3), 2);
+                }
+                ctx.globalAlpha = 1;
+                // Flower buds on wall top
+                if (isHoriz) {
+                    for (let fx = wx + 15; fx < wx + ww - 15; fx += 30 + ((fx * 13 + wy) % 20)) {
+                        ctx.fillStyle = '#2a5a20';
+                        ctx.fillRect(fx, wy - 5, 1, 5);
+                        ctx.fillStyle = ((fx * 7) % 3 === 0) ? '#e8e850' : ((fx * 7) % 3 === 1) ? '#e06090' : '#8060d0';
+                        ctx.fillRect(fx - 2, wy - 7, 5, 3);
+                    }
+                }
+
+            } else if (selectedDungeon === 'desert') {
+                // Hieroglyphs on horizontal walls
+                if (isHoriz) {
+                    ctx.fillStyle = '#b8956a';
+                    ctx.globalAlpha = 0.4;
+                    for (let hx = wx + 8; hx < wx + ww - 8; hx += 18 + ((hx + wy) % 8)) {
+                        const sym = (hx * 3 + wy * 7) % 6;
+                        if (sym === 0) {
+                            // Eye of Horus
+                            ctx.fillRect(hx, wy + 5, 6, 2);
+                            ctx.fillRect(hx + 2, wy + 3, 2, 6);
+                            ctx.fillRect(hx + 5, wy + 7, 3, 4);
+                        } else if (sym === 1) {
+                            // Ankh
+                            ctx.beginPath();
+                            ctx.arc(hx + 3, wy + 5, 3, 0, Math.PI * 2);
+                            ctx.fill();
+                            ctx.fillRect(hx + 2, wy + 8, 2, 6);
+                            ctx.fillRect(hx, wy + 10, 6, 2);
+                        } else if (sym === 2) {
+                            // Water waves
+                            ctx.fillRect(hx, wy + 7, 2, 2);
+                            ctx.fillRect(hx + 3, wy + 5, 2, 2);
+                            ctx.fillRect(hx + 6, wy + 7, 2, 2);
+                            ctx.fillRect(hx + 9, wy + 5, 2, 2);
+                        } else if (sym === 3) {
+                            // Pyramid
+                            ctx.beginPath();
+                            ctx.moveTo(hx + 5, wy + 3);
+                            ctx.lineTo(hx, wy + 13);
+                            ctx.lineTo(hx + 10, wy + 13);
+                            ctx.closePath();
+                            ctx.fill();
+                        } else if (sym === 4) {
+                            // Bird shape (Ibis)
+                            ctx.fillRect(hx + 2, wy + 4, 5, 3);
+                            ctx.fillRect(hx, wy + 5, 2, 2);
+                            ctx.fillRect(hx + 7, wy + 3, 3, 1);
+                            ctx.fillRect(hx + 3, wy + 7, 1, 4);
+                            ctx.fillRect(hx + 5, wy + 7, 1, 4);
+                        } else {
+                            // Sun disc
+                            ctx.beginPath();
+                            ctx.arc(hx + 4, wy + 8, 4, 0, Math.PI * 2);
+                            ctx.fill();
+                            ctx.fillRect(hx, wy + 3, 1, 3);
+                            ctx.fillRect(hx + 8, wy + 3, 1, 3);
+                        }
+                    }
+                    ctx.globalAlpha = 1;
+                    // Sand piling at base
+                    ctx.fillStyle = '#4a3c28';
+                    ctx.globalAlpha = 0.15;
+                    for (let sx = wx; sx < wx + ww; sx += 12 + ((sx + wy) % 8)) {
+                        const pile = 2 + ((sx * 3 + wy) % 4);
+                        ctx.beginPath();
+                        ctx.moveTo(sx, wy + wh);
+                        ctx.lineTo(sx + 8, wy + wh);
+                        ctx.lineTo(sx + 4, wy + wh + pile);
+                        ctx.closePath();
+                        ctx.fill();
+                    }
+                    ctx.globalAlpha = 1;
+                }
+                if (isVert) {
+                    // Vertical cracks and sand erosion
+                    ctx.fillStyle = '#b8956a';
+                    ctx.globalAlpha = 0.3;
+                    for (let cy = wy + 6; cy < wy + wh - 6; cy += 14 + ((wx + cy) % 10)) {
+                        ctx.fillRect(wx + 3, cy, ww - 6, 1);
+                        ctx.fillRect(wx + 5, cy - 2, 1, 5);
+                        ctx.fillRect(wx + ww - 6, cy + 3, 1, 4);
+                    }
+                    ctx.globalAlpha = 1;
+                    // Sand spilling from cracks
+                    ctx.fillStyle = '#4a3c28';
+                    ctx.globalAlpha = 0.15;
+                    for (let sy = wy + 15; sy < wy + wh - 15; sy += 25 + ((wx + sy) % 12)) {
+                        ctx.fillRect(wx + ww, sy, 3, 2);
+                        ctx.fillRect(wx + ww + 1, sy + 2, 2, 3);
+                    }
+                    ctx.globalAlpha = 1;
+                }
+                // Worn/chipped edges
+                ctx.fillStyle = COLORS.floor;
+                ctx.globalAlpha = 0.3;
+                for (let cx = wx + 5; cx < wx + ww - 5; cx += 20 + ((cx + wy) % 10)) {
+                    ctx.fillRect(cx, wy, 3, 2);
+                    ctx.fillRect(cx + 7, wy + wh - 2, 2, 2);
+                }
+                ctx.globalAlpha = 1;
+
+            } else if (selectedDungeon === 'ice') {
+                // Icicles on horizontal walls (top and bottom)
+                if (isHoriz) {
+                    // Bottom icicles
+                    for (let ix = wx + 5; ix < wx + ww - 5; ix += 8 + ((ix + wy) % 6)) {
+                        const iceLen = 6 + ((ix * 3 + wy) % 12);
+                        ctx.fillStyle = '#aadcee';
+                        ctx.beginPath();
+                        ctx.moveTo(ix - 2, wy + wh);
+                        ctx.lineTo(ix + 2, wy + wh);
+                        ctx.lineTo(ix, wy + wh + iceLen);
+                        ctx.closePath();
+                        ctx.fill();
+                        ctx.fillStyle = '#d4eef8';
+                        ctx.fillRect(ix, wy + wh + 1, 1, Math.max(1, iceLen - 3));
+                    }
+                    // Top icicles (shorter, going up)
+                    for (let ix = wx + 10; ix < wx + ww - 10; ix += 12 + ((ix * 7 + wy) % 10)) {
+                        const iceLen = 3 + ((ix * 5 + wy) % 6);
+                        ctx.fillStyle = '#9acade';
+                        ctx.beginPath();
+                        ctx.moveTo(ix - 1, wy);
+                        ctx.lineTo(ix + 1, wy);
+                        ctx.lineTo(ix, wy - iceLen);
+                        ctx.closePath();
+                        ctx.fill();
+                    }
+                    // Frost shimmer on wall surface
+                    ctx.fillStyle = '#c0e0f0';
+                    ctx.globalAlpha = 0.15;
+                    ctx.fillRect(wx, wy, ww, wh);
+                    ctx.globalAlpha = 1;
+                }
+                if (isVert) {
+                    // Side icicles
+                    for (let iy = wy + 6; iy < wy + wh - 6; iy += 10 + ((wx + iy) % 8)) {
+                        const iceLen = 4 + ((wx * 3 + iy) % 8);
+                        // Right side
+                        ctx.fillStyle = '#aadcee';
+                        ctx.beginPath();
+                        ctx.moveTo(wx + ww, iy - 1);
+                        ctx.lineTo(wx + ww, iy + 1);
+                        ctx.lineTo(wx + ww + iceLen, iy);
+                        ctx.closePath();
+                        ctx.fill();
+                        // Left side
+                        const iceLen2 = 3 + ((wx * 7 + iy) % 6);
+                        ctx.beginPath();
+                        ctx.moveTo(wx, iy + 4);
+                        ctx.lineTo(wx, iy + 6);
+                        ctx.lineTo(wx - iceLen2, iy + 5);
+                        ctx.closePath();
+                        ctx.fill();
+                    }
+                    // Frost crystals
+                    ctx.fillStyle = '#8ecae6';
+                    ctx.globalAlpha = 0.3;
+                    for (let fy = wy + 5; fy < wy + wh - 5; fy += 12 + ((wx + fy) % 6)) {
+                        ctx.fillRect(wx + 2, fy, 3, 3);
+                        ctx.fillRect(wx + ww - 5, fy + 4, 3, 3);
+                    }
+                    ctx.globalAlpha = 1;
+                }
+                // Frost overlay on wall
+                ctx.fillStyle = '#c0e0f0';
+                ctx.globalAlpha = 0.08;
+                ctx.fillRect(wx, wy, ww, wh);
+                ctx.globalAlpha = 1;
+
+            } else if (selectedDungeon === 'volcano') {
+                // Glowing cracks
+                if (isHoriz) {
+                    const glow = 0.4 + Math.sin(Date.now() / 1500) * 0.15;
+                    ctx.fillStyle = '#ff6600';
+                    ctx.globalAlpha = glow;
+                    for (let cx = wx + 6; cx < wx + ww - 8; cx += 12 + ((cx + wy) % 8)) {
+                        // Main crack
+                        ctx.fillRect(cx, wy + 5, 8, 1);
+                        // Branches
+                        ctx.fillRect(cx + 2, wy + 3, 1, 5);
+                        ctx.fillRect(cx + 6, wy + 2, 1, 4);
+                        // Wider glow under crack
+                        ctx.globalAlpha = glow * 0.3;
+                        ctx.fillRect(cx - 1, wy + 4, 10, 3);
+                        ctx.globalAlpha = glow;
+                    }
+                    // Glow on edges
+                    ctx.fillStyle = '#ff4500';
+                    ctx.globalAlpha = 0.15;
+                    ctx.fillRect(wx, wy + wh - 2, ww, 3);
+                    ctx.fillRect(wx, wy, ww, 2);
+                    ctx.globalAlpha = 1;
+                    // Charred spots
+                    ctx.fillStyle = '#1a0c06';
+                    ctx.globalAlpha = 0.3;
+                    for (let sx = wx + 10; sx < wx + ww - 10; sx += 25 + ((sx + wy) % 15)) {
+                        ctx.beginPath();
+                        ctx.arc(sx, wy + wh + 4, 3, 0, Math.PI * 2);
+                        ctx.fill();
+                    }
+                    ctx.globalAlpha = 1;
+                }
+                if (isVert) {
+                    const glow = 0.35 + Math.sin(Date.now() / 1500 + 1) * 0.1;
+                    ctx.fillStyle = '#ff6600';
+                    ctx.globalAlpha = glow;
+                    for (let cy = wy + 8; cy < wy + wh - 8; cy += 14 + ((wx + cy) % 10)) {
+                        ctx.fillRect(wx + 3, cy, 1, 10);
+                        ctx.fillRect(wx + ww - 4, cy + 5, 1, 10);
+                        ctx.fillRect(wx + 2, cy + 4, 5, 1);
+                    }
+                    // Edge glow
+                    ctx.fillStyle = '#ff4500';
+                    ctx.globalAlpha = 0.12;
+                    ctx.fillRect(wx + ww - 1, wy, 2, wh);
+                    ctx.fillRect(wx - 1, wy, 2, wh);
+                    ctx.globalAlpha = 1;
+                }
+                // Soot / dark patches
+                ctx.fillStyle = '#0a0604';
+                ctx.globalAlpha = 0.2;
+                for (let dx = wx + 4; dx < wx + ww - 4; dx += 16 + ((dx + wy) % 8)) {
+                    ctx.fillRect(dx, wy + 2, 5, 3);
+                }
+                ctx.globalAlpha = 1;
+
+            } else {
+                // Dark Dungeon - full brickwork
+                ctx.fillStyle = '#7d7daa';
+                ctx.globalAlpha = 0.2;
+                if (isHoriz) {
+                    // Brick rows
+                    ctx.fillRect(wx, wy + 8, ww, 1);
+                    for (let bx = wx + 10; bx < wx + ww; bx += 20 + ((bx + wy) % 5)) {
+                        ctx.fillRect(bx, wy + 1, 1, 7);
+                        ctx.fillRect(bx + 10, wy + 9, 1, 7);
+                    }
+                    // Weathered edges
+                    ctx.fillStyle = COLORS.floor;
+                    ctx.globalAlpha = 0.15;
+                    for (let ex = wx + 8; ex < wx + ww - 8; ex += 22 + ((ex + wy) % 10)) {
+                        ctx.fillRect(ex, wy + wh - 1, 3, 2);
+                        ctx.fillRect(ex + 6, wy, 2, 2);
+                    }
+                } else {
+                    // Vertical brickwork
+                    for (let by = wy + 8; by < wy + wh; by += 10) {
+                        ctx.fillStyle = '#7d7daa';
+                        ctx.globalAlpha = 0.2;
+                        ctx.fillRect(wx + 2, by, ww - 4, 1);
+                    }
+                }
+                ctx.globalAlpha = 1;
+
+                // Torches on long walls
+                const torchPositions = [];
+                if (isHoriz && ww > 50) {
+                    for (let tx = wx + 25; tx < wx + ww - 20; tx += 50 + ((tx + wy) % 18)) {
+                        torchPositions.push({ x: tx, y: wy - 6, side: 'top' });
+                    }
+                } else if (isVert && wh > 40) {
+                    for (let ty = wy + 18; ty < wy + wh - 18; ty += 45 + ((wx + ty) % 16)) {
+                        torchPositions.push({ x: wx + ww + 3, y: ty, side: 'right' });
+                    }
+                }
+                for (const tp of torchPositions) {
+                    // Bracket
+                    ctx.fillStyle = '#5d4e37';
+                    ctx.fillRect(tp.x - 1, tp.y + 2, 3, 6);
+                    // Flame (flickering)
+                    const flicker = Math.sin(Date.now() / 200 + tp.x + tp.y) * 1;
+                    ctx.fillStyle = '#ff8c00';
+                    ctx.fillRect(tp.x - 2 + flicker * 0.3, tp.y - 2, 5, 4);
+                    ctx.fillStyle = '#ffcc00';
+                    ctx.fillRect(tp.x - 1, tp.y - 4, 3, 3);
+                    ctx.fillStyle = '#fff';
+                    ctx.fillRect(tp.x, tp.y - 3, 1, 2);
+                    // Light glow
+                    ctx.fillStyle = '#ffcc00';
+                    ctx.globalAlpha = 0.06;
+                    ctx.beginPath();
+                    ctx.arc(tp.x, tp.y, 18, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.globalAlpha = 1;
+                }
+
+                // Cobwebs in corners where walls meet outer edges
+                if (isHoriz && (wx <= 20 || wx + ww >= W - 20)) {
+                    const cobX = wx <= 20 ? wx : wx + ww;
+                    ctx.strokeStyle = '#6a6a82';
+                    ctx.globalAlpha = 0.2;
+                    ctx.lineWidth = 1;
+                    for (let s = 0; s < 4; s++) {
+                        const ang = (s / 4) * Math.PI * 0.5;
+                        ctx.beginPath();
+                        ctx.moveTo(cobX, wy + wh);
+                        ctx.quadraticCurveTo(cobX + Math.cos(ang) * 8, wy + wh + Math.sin(ang) * 8, cobX + Math.cos(ang) * 14, wy + wh + Math.sin(ang) * 14);
+                        ctx.stroke();
+                    }
+                    ctx.globalAlpha = 1;
+                }
+
+                // Banner/tapestry on long walls
+                if (isHoriz && ww > 80) {
+                    for (let bx = wx + 40; bx < wx + ww - 30; bx += 80 + ((bx + wy) % 30)) {
+                        const bannerColors = ['#6b2020', '#20406b', '#3b6b20'];
+                        ctx.fillStyle = bannerColors[(bx * 3 + wy) % bannerColors.length];
+                        ctx.fillRect(bx - 4, wy - 12, 8, 14);
+                        // Banner trim
+                        ctx.fillStyle = '#c8b060';
+                        ctx.fillRect(bx - 4, wy - 12, 8, 1);
+                        ctx.fillRect(bx - 4, wy + 1, 3, 2);
+                        ctx.fillRect(bx + 1, wy + 1, 3, 2);
+                        // Rod
+                        ctx.fillStyle = '#5d4e37';
+                        ctx.fillRect(bx - 6, wy - 13, 12, 2);
+                    }
+                }
+            }
+        }
+
+        // Spawn ambient dungeon particles
+        function spawnAmbientParticles() {
+            if (gameState !== 'playing') return;
+            if (selectedDungeon === 'jungle') {
+                // Falling leaves / pollen
+                if (Math.random() < 0.03) {
+                    particles.push({
+                        x: Math.random() * W,
+                        y: 25,
+                        vx: (Math.random() - 0.5) * 0.5,
+                        vy: 0.3 + Math.random() * 0.3,
+                        life: 120,
+                        color: Math.random() > 0.5 ? '#4a9e40' : '#e8e850'
+                    });
+                }
+                // Fireflies
+                if (Math.random() < 0.01) {
+                    particles.push({
+                        x: 30 + Math.random() * (W - 60),
+                        y: 30 + Math.random() * (H - 60),
+                        vx: (Math.random() - 0.5) * 0.3,
+                        vy: (Math.random() - 0.5) * 0.3,
+                        life: 80,
+                        color: '#ccff44'
+                    });
+                }
+            } else if (selectedDungeon === 'desert') {
+                // Blowing sand
+                if (Math.random() < 0.04) {
+                    particles.push({
+                        x: 20,
+                        y: 30 + Math.random() * (H - 60),
+                        vx: 0.8 + Math.random() * 0.6,
+                        vy: (Math.random() - 0.5) * 0.2,
+                        life: 80,
+                        color: '#c4a35a'
+                    });
+                }
+                // Dust motes
+                if (Math.random() < 0.02) {
+                    particles.push({
+                        x: 30 + Math.random() * (W - 60),
+                        y: 30 + Math.random() * (H - 60),
+                        vx: (Math.random() - 0.5) * 0.2,
+                        vy: -0.1 - Math.random() * 0.2,
+                        life: 60,
+                        color: '#a68b4b'
+                    });
+                }
+            } else if (selectedDungeon === 'ice') {
+                // Snowflakes
+                if (Math.random() < 0.05) {
+                    particles.push({
+                        x: Math.random() * W,
+                        y: 25,
+                        vx: (Math.random() - 0.5) * 0.4,
+                        vy: 0.2 + Math.random() * 0.4,
+                        life: 150,
+                        color: '#d4eef8'
+                    });
+                }
+                // Frost sparkle
+                if (Math.random() < 0.01) {
+                    particles.push({
+                        x: 30 + Math.random() * (W - 60),
+                        y: 30 + Math.random() * (H - 60),
+                        vx: 0,
+                        vy: 0,
+                        life: 20,
+                        color: '#fff'
+                    });
+                }
+            } else if (selectedDungeon === 'volcano') {
+                // Floating embers
+                if (Math.random() < 0.04) {
+                    particles.push({
+                        x: 30 + Math.random() * (W - 60),
+                        y: H - 30,
+                        vx: (Math.random() - 0.5) * 0.5,
+                        vy: -0.5 - Math.random() * 0.8,
+                        life: 100,
+                        color: Math.random() > 0.5 ? '#ff4500' : '#ff8c00'
+                    });
+                }
+                // Smoke wisps
+                if (Math.random() < 0.02) {
+                    particles.push({
+                        x: 30 + Math.random() * (W - 60),
+                        y: 30 + Math.random() * (H - 60),
+                        vx: (Math.random() - 0.5) * 0.15,
+                        vy: -0.2 - Math.random() * 0.2,
+                        life: 60,
+                        color: '#333'
+                    });
+                }
+            } else {
+                // Dungeon dust motes
+                if (Math.random() < 0.015) {
+                    particles.push({
+                        x: 30 + Math.random() * (W - 60),
+                        y: 30 + Math.random() * (H - 60),
+                        vx: (Math.random() - 0.5) * 0.1,
+                        vy: -0.05 - Math.random() * 0.1,
+                        life: 80,
+                        color: '#5a5a72'
+                    });
+                }
+                // Dripping water
+                if (Math.random() < 0.005) {
+                    particles.push({
+                        x: 30 + Math.random() * (W - 60),
+                        y: 25,
+                        vx: 0,
+                        vy: 1.5,
+                        life: 30,
+                        color: '#4a4a8a'
+                    });
+                }
+            }
+        }
+
         // Draw player
         function drawPlayer() {
             const px = Math.floor(player.x - player.width / 2);
@@ -667,6 +2550,14 @@
 
             // Body
             drawPixelRect(px, py, player.width, player.height, COLORS.player, COLORS.playerDark);
+
+            // Armor outline
+            if (playerArmorTier > 0) {
+                const armorColor = ARMOR_TIERS[playerArmorTier - 1].color;
+                ctx.strokeStyle = armorColor;
+                ctx.lineWidth = 2;
+                ctx.strokeRect(px - 1, py - 1, player.width + 2, player.height + 2);
+            }
 
             // Draw gun based on weapon type
             const weapon = WEAPONS[player.weapon];
@@ -1309,6 +3200,15 @@
         function updatePlayer() {
             if (gameState !== 'playing') return;
 
+            // Regen Aura charm: heal 1 HP every 3 seconds (180 ticks at 60fps)
+            if (playerCharms.includes('regen_aura')) {
+                regenTimer++;
+                if (regenTimer >= 180) {
+                    regenTimer = 0;
+                    player.health = Math.min(player.health + 1, player.maxHealth);
+                }
+            }
+
             let newX = player.x;
             let newY = player.y;
 
@@ -1414,9 +3314,23 @@
                             player.ammo = Math.min(player.ammo + 15, player.maxAmmo);
                             pickups.splice(i, 1);
                         }
+                    } else if (p.type === 'scrap') {
+                        // Collect scrap (run currency)
+                        scrap += p.value || 1;
+                        // Scrap particles
+                        for (let j = 0; j < 3; j++) {
+                            particles.push({
+                                x: p.x, y: p.y,
+                                vx: (Math.random() - 0.5) * 2,
+                                vy: (Math.random() - 0.5) * 2,
+                                life: 15,
+                                color: '#95a5a6'
+                            });
+                        }
+                        pickups.splice(i, 1);
                     } else if (p.type === 'coin') {
                         // Collect coin
-                        coins += p.value || 5;
+                        coins += p.value || 1;
                         saveProgress();
                         // Coin particles
                         for (let j = 0; j < 5; j++) {
@@ -1440,7 +3354,11 @@
                             player.maxAmmo = 0;
                             player.ammo = 0;
                         } else {
-                            player.maxAmmo = newWeapon.maxAmmo;
+                            let baseMax = newWeapon.maxAmmo;
+                            if (playerCharms.includes('big_magazines')) {
+                                baseMax = Math.floor(baseMax * 1.5);
+                            }
+                            player.maxAmmo = baseMax;
                             player.ammo = player.maxAmmo;
                         }
                         // Stop any ongoing reload
@@ -1468,7 +3386,7 @@
             } else {
                 document.getElementById('ammo').textContent = player.reloading ? 'Reloading...' : `${weaponName}: ${player.ammo}`;
             }
-            document.getElementById('score').textContent = `Score: ${score} | $${coins}`;
+            document.getElementById('score').textContent = `Score: ${score} | $${coins} | S:${scrap}`;
             document.getElementById('level').textContent = `Building: ${currentLevel}`;
         }
 
@@ -1636,7 +3554,7 @@
                     }
 
                     if (enemy.health <= 0) {
-                        score += 100;
+                        onEnemyKill(enemy);
                         // Death particles
                         for (let k = 0; k < 15; k++) {
                             particles.push({
@@ -1653,15 +3571,6 @@
                 }
             }
 
-            // Damage player if in radius
-            const playerDist = Math.hypot(player.x - x, player.y - y);
-            if (playerDist <= radius) {
-                const damageMultiplier = 1 - (playerDist / radius) * 0.5;
-                player.health -= Math.floor(damage * 0.3 * damageMultiplier); // Self damage reduced
-                if (player.health <= 0) {
-                    gameState = 'gameover';
-                }
-            }
         }
 
         // Place bomb
@@ -1781,7 +3690,7 @@
                     }
 
                     if (enemy.health <= 0) {
-                        score += 100;
+                        onEnemyKill(enemy);
                         // Death particles
                         for (let k = 0; k < 15; k++) {
                             particles.push({
@@ -1798,15 +3707,6 @@
                 }
             }
 
-            // Damage player if in radius
-            const playerDist = Math.hypot(player.x - x, player.y - y);
-            if (playerDist <= radius) {
-                const damageMultiplier = 1 - (playerDist / radius) * 0.5;
-                player.health -= Math.floor(damage * 0.4 * damageMultiplier); // Self damage reduced
-                if (player.health <= 0) {
-                    gameState = 'gameover';
-                }
-            }
         }
 
         // Check if line of sight is blocked by walls
@@ -1898,7 +3798,7 @@
                         }
 
                         if (enemy.health <= 0) {
-                            score += 100;
+                            onEnemyKill(enemy);
 
                             // Death particles
                             for (let k = 0; k < 15; k++) {
@@ -1909,56 +3809,6 @@
                                     vy: (Math.random() - 0.5) * 6,
                                     life: 30,
                                     color: COLORS.enemy
-                                });
-                            }
-
-                            // Drop pickup chance
-                            if (Math.random() < 0.4) {
-                                let type;
-                                const roll = Math.random();
-                                if (roll < 0.08) {
-                                    const available = [];
-                                    if (currentLevel >= 1) available.push('smg');
-                                    if (currentLevel >= 2) available.push('shotgun', 'rifle');
-                                    if (currentLevel >= 3) available.push('railgun');
-                                    if (currentLevel >= 4) available.push('minigun');
-                                    // Melee weapons have lower spawn rate (25% chance)
-                                    if (currentLevel >= 2 && Math.random() < 0.25) available.push('sword');
-                                    if (currentLevel >= 3 && Math.random() < 0.25) available.push('katana');
-                                    // Rare weapons have 15% spawn rate
-                                    if (currentLevel >= 3 && Math.random() < 0.15) available.push('sniper');
-                                    if (currentLevel >= 4 && Math.random() < 0.15) available.push('flamethrower');
-                                    if (currentLevel >= 5 && Math.random() < 0.15) available.push('rocketlauncher');
-                                    // Super rare bomb (5% spawn rate)
-                                    if (currentLevel >= 4 && Math.random() < 0.05) available.push('bomb');
-                                    if (available.length > 0) {
-                                        type = available[Math.floor(Math.random() * available.length)];
-                                    } else {
-                                        type = 'ammo';
-                                    }
-                                } else if (roll < 0.5) {
-                                    type = 'health';
-                                } else {
-                                    type = 'ammo';
-                                }
-                                pickups.push({
-                                    x: enemy.x,
-                                    y: enemy.y,
-                                    type: type,
-                                    width: 12,
-                                    height: 12
-                                });
-                            }
-
-                            // Coin drop chance (30%)
-                            if (Math.random() < 0.3) {
-                                pickups.push({
-                                    x: enemy.x + (Math.random() - 0.5) * 10,
-                                    y: enemy.y + (Math.random() - 0.5) * 10,
-                                    type: 'coin',
-                                    width: 10,
-                                    height: 10,
-                                    value: 2 + Math.floor(currentLevel / 2)
                                 });
                             }
 
@@ -2019,7 +3869,7 @@
 
                     // Melee damage for chargers
                     if (!enemy.canShoot && dist < 20 && !playerInSafeZone && enemy.shootCooldown <= 0) {
-                        player.health -= Math.floor(15 * currentDamageMult);
+                        player.health -= Math.floor(15 * currentDamageMult * (1 - playerArmor));
                         enemy.shootCooldown = 30;
                         if (player.health <= 0) gameState = 'gameover';
                     }
@@ -2119,8 +3969,8 @@
                             }
 
                             if (e.health <= 0) {
+                                onEnemyKill(e);
                                 enemies.splice(j, 1);
-                                score += 100;
 
                                 // Death particles
                                 for (let k = 0; k < 15; k++) {
@@ -2133,58 +3983,6 @@
                                         color: COLORS.enemy
                                     });
                                 }
-
-                                // Drop pickup chance
-                                if (Math.random() < 0.4) {
-                                    let type;
-                                    const roll = Math.random();
-                                    // 8% chance for weapon drop
-                                    if (roll < 0.08) {
-                                        // Pick weapon based on level
-                                        const available = [];
-                                        if (currentLevel >= 1) available.push('smg');
-                                        if (currentLevel >= 2) available.push('shotgun', 'rifle');
-                                        if (currentLevel >= 3) available.push('railgun');
-                                        if (currentLevel >= 4) available.push('minigun');
-                                        // Melee weapons have lower spawn rate (25% chance)
-                                        if (currentLevel >= 2 && Math.random() < 0.25) available.push('sword');
-                                        if (currentLevel >= 3 && Math.random() < 0.25) available.push('katana');
-                                        // Rare weapons have 15% spawn rate
-                                        if (currentLevel >= 3 && Math.random() < 0.15) available.push('sniper');
-                                        if (currentLevel >= 4 && Math.random() < 0.15) available.push('flamethrower');
-                                        if (currentLevel >= 5 && Math.random() < 0.15) available.push('rocketlauncher');
-                                        // Super rare bomb (5% spawn rate)
-                                        if (currentLevel >= 4 && Math.random() < 0.05) available.push('bomb');
-                                        if (available.length > 0) {
-                                            type = available[Math.floor(Math.random() * available.length)];
-                                        } else {
-                                            type = 'ammo';
-                                        }
-                                    } else if (roll < 0.5) {
-                                        type = 'health';
-                                    } else {
-                                        type = 'ammo';
-                                    }
-                                    pickups.push({
-                                        x: e.x,
-                                        y: e.y,
-                                        type: type,
-                                        width: 12,
-                                        height: 12
-                                    });
-                                }
-
-                                // Coin drop chance (30%)
-                                if (Math.random() < 0.3) {
-                                    pickups.push({
-                                        x: e.x + (Math.random() - 0.5) * 10,
-                                        y: e.y + (Math.random() - 0.5) * 10,
-                                        type: 'coin',
-                                        width: 10,
-                                        height: 10,
-                                        value: 2 + Math.floor(currentLevel / 2)
-                                    });
-                                }
                             }
                             if (!b.pierce) break;
                         }
@@ -2195,7 +3993,7 @@
                     const dist = Math.hypot(b.x - player.x, b.y - player.y);
                     const playerInSafeZone = Math.hypot(player.x - safeZone.x, player.y - safeZone.y) < safeZone.radius;
                     if (dist < 12 && !playerInSafeZone) {
-                        player.health -= Math.floor(10 * currentDamageMult);
+                        player.health -= Math.floor(10 * currentDamageMult * (1 - playerArmor));
                         bullets.splice(i, 1);
 
                         if (player.health <= 0) {
@@ -2228,8 +4026,14 @@
                 gameState = 'levelcomplete';
                 setTimeout(() => {
                     currentLevel++;
-                    generateLevel(currentLevel);
-                    gameState = 'playing';
+                    // Run shop every 5 levels
+                    if (currentLevel > 1 && currentLevel % 5 === 0) {
+                        generateRunShopInventory();
+                        gameState = 'runshop';
+                    } else {
+                        generateLevel(currentLevel);
+                        gameState = 'playing';
+                    }
                 }, 2000);
             }
         }
@@ -2470,9 +4274,18 @@
                 return;
             }
 
+            // Draw run shop screen
+            if (gameState === 'runshop') {
+                drawRunShop();
+                return;
+            }
+
             // Clear with floor color
             ctx.fillStyle = COLORS.floor;
             ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // Draw floor decorations (under everything)
+            drawFloorDecorations();
 
             // Draw safe zone
             ctx.beginPath();
@@ -2486,7 +4299,11 @@
             // Draw walls
             for (const wall of walls) {
                 drawPixelRect(wall.x, wall.y, wall.w, wall.h, COLORS.wall, COLORS.wallDark);
+                drawWallDecorations(wall);
             }
+
+            // Draw large level props (trees, pillars, etc.)
+            drawLevelProps();
 
             // Draw placed bombs
             for (const bomb of bombs) {
@@ -2562,6 +4379,21 @@
                     ctx.textAlign = 'center';
                     ctx.fillText('$', p.x, p.y + 3);
                     ctx.textAlign = 'left';
+                } else if (p.type === 'scrap') {
+                    // Scrap pickup - metallic circle
+                    ctx.fillStyle = '#7f8c8d';
+                    ctx.beginPath();
+                    ctx.arc(p.x, p.y, 5, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.fillStyle = '#bdc3c7';
+                    ctx.beginPath();
+                    ctx.arc(p.x - 1, p.y - 1, 2, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.strokeStyle = '#566573';
+                    ctx.lineWidth = 1;
+                    ctx.beginPath();
+                    ctx.arc(p.x, p.y, 5, 0, Math.PI * 2);
+                    ctx.stroke();
                 } else if (WEAPONS[p.type]) {
                     // Weapon pickup
                     const weapon = WEAPONS[p.type];
@@ -2778,7 +4610,31 @@
             ctx.fillStyle = '#333';
             ctx.fillRect(20, 20, 104, 14);
             ctx.fillStyle = player.health > 30 ? COLORS.health : '#e74c3c';
-            ctx.fillRect(22, 22, player.health, 10);
+            ctx.fillRect(22, 22, (player.health / player.maxHealth) * 100, 10);
+
+            // Scrap counter on screen (below health bar)
+            if (gameState === 'playing') {
+                ctx.fillStyle = '#95a5a6';
+                ctx.font = '10px monospace';
+                ctx.textAlign = 'left';
+                ctx.fillText('S:' + scrap, 20, 48);
+
+                // Charm icons
+                for (let ci = 0; ci < playerCharms.length; ci++) {
+                    const charm = CHARMS[playerCharms[ci]];
+                    ctx.fillStyle = charm.color;
+                    ctx.font = 'bold 9px monospace';
+                    ctx.fillText(charm.icon, 60 + ci * 22, 48);
+                }
+
+                // Armor indicator
+                if (playerArmorTier > 0) {
+                    const at = ARMOR_TIERS[playerArmorTier - 1];
+                    ctx.fillStyle = at.color;
+                    ctx.font = '9px monospace';
+                    ctx.fillText('A' + playerArmorTier, 128, 32);
+                }
+            }
         }
 
         // Game loop
@@ -2788,6 +4644,7 @@
             updateBullets();
             updateBombs();
             updateParticles();
+            spawnAmbientParticles();
             checkLevelComplete();
             draw();
             requestAnimationFrame(gameLoop);
@@ -2798,6 +4655,7 @@
             keys[e.key] = true;
             if (e.key === ' ' && gameState === 'gameover') {
                 clearSavedRun();
+                resetRunState();
                 gameState = 'menu';
             }
             if ((e.key === 'Escape' || e.key === 'p') && (gameState === 'playing' || gameState === 'paused')) {
@@ -2841,6 +4699,7 @@
                         } else if (btn.dungeon) {
                             // Clear any saved run when starting new
                             clearSavedRun();
+                            resetRunState();
                             applyDungeonTheme(btn.dungeon);
                             score = 0;
                             currentLevel = 1;
@@ -2899,6 +4758,8 @@
                         }
                     }
                 }
+            } else if (gameState === 'runshop') {
+                handleRunShopClick(clickX, clickY);
             }
         });
         canvas.addEventListener('mouseup', () => mouseDown = false);
@@ -2936,6 +4797,7 @@
                                     return;
                                 } else if (btn.dungeon) {
                                     clearSavedRun();
+                                    resetRunState();
                                     applyDungeonTheme(btn.dungeon);
                                     score = 0;
                                     currentLevel = 1;
@@ -3003,6 +4865,12 @@
                         return;
                     }
 
+                    // Handle run shop selection
+                    if (gameState === 'runshop') {
+                        handleRunShopClick(tx, ty);
+                        return;
+                    }
+
                     // Left half = movement, Right half = aim and shoot
                     if (tx < W / 2) {
                         leftTouchId = touch.identifier;
@@ -3022,6 +4890,7 @@
 
                 if (gameState === 'gameover') {
                     clearSavedRun();
+                    resetRunState();
                     gameState = 'menu';
                 }
             });
