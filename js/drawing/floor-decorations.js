@@ -352,5 +352,69 @@ function drawFloorDecorations() {
                 ctx.globalAlpha = 1;
             }
         }
+
+        // Boss arena special decorations (all dungeons)
+        if (d.variant === 20) {
+            // Boss arena skull pattern in center
+            const s = d.size / 60; // Scale factor
+            ctx.fillStyle = '#4a0000';
+            ctx.globalAlpha = 0.3;
+            // Skull outline
+            ctx.beginPath();
+            ctx.arc(d.x, d.y - 10*s, 25*s, Math.PI, 0); // Top of skull
+            ctx.lineTo(d.x + 20*s, d.y + 15*s);
+            ctx.quadraticCurveTo(d.x, d.y + 25*s, d.x - 20*s, d.y + 15*s);
+            ctx.closePath();
+            ctx.fill();
+            // Eye sockets
+            ctx.fillStyle = '#1a0000';
+            ctx.globalAlpha = 0.5;
+            ctx.beginPath();
+            ctx.ellipse(d.x - 10*s, d.y - 5*s, 6*s, 8*s, 0, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.beginPath();
+            ctx.ellipse(d.x + 10*s, d.y - 5*s, 6*s, 8*s, 0, 0, Math.PI * 2);
+            ctx.fill();
+            // Nose
+            ctx.beginPath();
+            ctx.moveTo(d.x, d.y + 2*s);
+            ctx.lineTo(d.x - 4*s, d.y + 12*s);
+            ctx.lineTo(d.x + 4*s, d.y + 12*s);
+            ctx.closePath();
+            ctx.fill();
+            ctx.globalAlpha = 1;
+        } else if (d.variant === 21) {
+            // Boss arena torch (animated flame)
+            const flicker = Math.sin(Date.now() / 150 + d.x * 10) * 2;
+            const flicker2 = Math.cos(Date.now() / 200 + d.y * 10) * 1.5;
+            // Torch base
+            ctx.fillStyle = '#4a3020';
+            ctx.fillRect(d.x - 2, d.y, 4, 8);
+            // Flame glow
+            ctx.fillStyle = '#ff4500';
+            ctx.globalAlpha = 0.3;
+            ctx.beginPath();
+            ctx.arc(d.x, d.y - 4, d.size + 4, 0, Math.PI * 2);
+            ctx.fill();
+            // Inner flame
+            ctx.globalAlpha = 0.7;
+            ctx.fillStyle = '#ff6600';
+            ctx.beginPath();
+            ctx.moveTo(d.x - 4 + flicker2, d.y);
+            ctx.quadraticCurveTo(d.x - 5 + flicker, d.y - 8 - Math.abs(flicker), d.x + flicker2, d.y - 14 - Math.abs(flicker));
+            ctx.quadraticCurveTo(d.x + 5 + flicker, d.y - 8 - Math.abs(flicker2), d.x + 4 + flicker2, d.y);
+            ctx.closePath();
+            ctx.fill();
+            // Core flame
+            ctx.fillStyle = '#ffff00';
+            ctx.globalAlpha = 0.8;
+            ctx.beginPath();
+            ctx.moveTo(d.x - 2, d.y);
+            ctx.quadraticCurveTo(d.x - 2 + flicker * 0.5, d.y - 5, d.x, d.y - 10 - Math.abs(flicker * 0.5));
+            ctx.quadraticCurveTo(d.x + 2 + flicker * 0.5, d.y - 5, d.x + 2, d.y);
+            ctx.closePath();
+            ctx.fill();
+            ctx.globalAlpha = 1;
+        }
     }
 }

@@ -159,6 +159,8 @@
         let bombs = [];
         let floorDecorations = [];
         let levelProps = [];
+        let bossWarningZones = [];
+        let activeBoss = null;
         let COLORS = {
             player: '#4ecdc4',
             playerDark: '#2ea8a0',
@@ -185,6 +187,7 @@
         G.bombs = bombs;
         G.floorDecorations = floorDecorations;
         G.levelProps = levelProps;
+        G.bossWarningZones = bossWarningZones;
         G.COLORS = COLORS;
         G.playerCharms = playerCharms;
         G.runShopInventory = runShopInventory;
@@ -272,6 +275,13 @@
         // Centralized kill handler
         function onEnemyKill(enemy) {
             score += 100;
+
+            // Clear boss warning zones when boss dies
+            if (enemy.type === 'boss') {
+                bossWarningZones = [];
+                G.bossWarningZones = bossWarningZones;
+                activeBoss = null;
+            }
 
             // Scrap drop - always drops
             let scrapAmount;
@@ -662,267 +672,277 @@
             let roomConfigs;
 
             if (isMobile) {
-                // Mobile layouts (360x640)
+                // Mobile layouts (360x640) - ALL OPEN, NO ENCLOSED AREAS
                 roomConfigs = [
-                    // 0 - Simple horizontal splits
+                    // 0 - Pillars
                     [
-                        { x: 0, y: 150, w: 200, h: 20 },
-                        { x: 160, y: 280, w: 200, h: 20 },
-                        { x: 0, y: 410, w: 200, h: 20 },
-                        { x: 160, y: 540, w: 200, h: 20 },
-                    ],
-                    // 1 - Cross corridors
-                    [
-                        { x: 120, y: 0, w: 20, h: 120 },
-                        { x: 220, y: 80, w: 20, h: 120 },
-                        { x: 0, y: 200, w: 150, h: 20 },
-                        { x: 210, y: 200, w: 150, h: 20 },
-                        { x: 120, y: 280, w: 20, h: 120 },
-                        { x: 0, y: 400, w: 250, h: 20 },
-                        { x: 180, y: 480, w: 20, h: 100 },
-                        { x: 80, y: 560, w: 200, h: 20 },
-                    ],
-                    // 2 - Dense maze
-                    [
-                        { x: 80, y: 60, w: 20, h: 100 },
-                        { x: 180, y: 0, w: 20, h: 120 },
-                        { x: 260, y: 80, w: 20, h: 100 },
-                        { x: 0, y: 160, w: 120, h: 20 },
-                        { x: 180, y: 160, w: 180, h: 20 },
-                        { x: 120, y: 220, w: 20, h: 100 },
-                        { x: 60, y: 320, w: 200, h: 20 },
-                        { x: 220, y: 380, w: 20, h: 100 },
-                        { x: 0, y: 440, w: 180, h: 20 },
-                        { x: 80, y: 500, w: 20, h: 80 },
-                        { x: 160, y: 540, w: 120, h: 20 },
-                    ],
-                    // 3 - Arena with pillars
-                    [
-                        { x: 80, y: 150, w: 40, h: 40 },
-                        { x: 240, y: 150, w: 40, h: 40 },
-                        { x: 80, y: 350, w: 40, h: 40 },
-                        { x: 240, y: 350, w: 40, h: 40 },
+                        { x: 80, y: 120, w: 40, h: 40 },
+                        { x: 240, y: 120, w: 40, h: 40 },
                         { x: 160, y: 250, w: 40, h: 40 },
-                        { x: 0, y: 480, w: 140, h: 20 },
-                        { x: 220, y: 480, w: 140, h: 20 },
+                        { x: 80, y: 380, w: 40, h: 40 },
+                        { x: 240, y: 380, w: 40, h: 40 },
+                        { x: 160, y: 500, w: 40, h: 40 },
                     ],
-                    // 4 - Winding path
+                    // 1 - Horizontal bars
                     [
-                        { x: 0, y: 100, w: 240, h: 20 },
-                        { x: 240, y: 100, w: 20, h: 120 },
-                        { x: 100, y: 220, w: 160, h: 20 },
-                        { x: 100, y: 220, w: 20, h: 120 },
-                        { x: 100, y: 340, w: 200, h: 20 },
-                        { x: 280, y: 340, w: 20, h: 120 },
-                        { x: 60, y: 460, w: 240, h: 20 },
+                        { x: 60, y: 100, w: 80, h: 20 },
+                        { x: 220, y: 100, w: 80, h: 20 },
+                        { x: 140, y: 220, w: 80, h: 20 },
+                        { x: 60, y: 340, w: 80, h: 20 },
+                        { x: 220, y: 340, w: 80, h: 20 },
+                        { x: 140, y: 460, w: 80, h: 20 },
                     ],
-                    // 5 - Central chamber
+                    // 2 - Vertical bars
                     [
-                        { x: 100, y: 0, w: 20, h: 200 },
-                        { x: 240, y: 0, w: 20, h: 200 },
-                        { x: 100, y: 200, w: 20, h: 20 },
-                        { x: 240, y: 200, w: 20, h: 20 },
-                        { x: 0, y: 200, w: 100, h: 20 },
-                        { x: 260, y: 200, w: 100, h: 20 },
-                        { x: 100, y: 400, w: 20, h: 20 },
-                        { x: 240, y: 400, w: 20, h: 20 },
-                        { x: 100, y: 420, w: 20, h: 160 },
-                        { x: 240, y: 420, w: 20, h: 160 },
-                        { x: 0, y: 400, w: 100, h: 20 },
-                        { x: 260, y: 400, w: 100, h: 20 },
+                        { x: 80, y: 80, w: 20, h: 80 },
+                        { x: 260, y: 80, w: 20, h: 80 },
+                        { x: 170, y: 200, w: 20, h: 80 },
+                        { x: 80, y: 320, w: 20, h: 80 },
+                        { x: 260, y: 320, w: 20, h: 80 },
+                        { x: 170, y: 440, w: 20, h: 80 },
                     ],
-                    // 6 - L-shaped rooms
+                    // 3 - Mixed pillars
                     [
-                        { x: 180, y: 0, w: 20, h: 160 },
-                        { x: 0, y: 160, w: 130, h: 20 },
-                        { x: 100, y: 180, w: 20, h: 80 },
-                        { x: 0, y: 320, w: 120, h: 20 },
-                        { x: 200, y: 260, w: 20, h: 140 },
-                        { x: 200, y: 400, w: 160, h: 20 },
-                        { x: 120, y: 460, w: 20, h: 120 },
-                        { x: 0, y: 520, w: 120, h: 20 },
+                        { x: 70, y: 100, w: 50, h: 50 },
+                        { x: 240, y: 100, w: 50, h: 50 },
+                        { x: 155, y: 240, w: 50, h: 50 },
+                        { x: 70, y: 380, w: 50, h: 50 },
+                        { x: 240, y: 380, w: 50, h: 50 },
                     ],
-                    // 7 - Scattered blocks
+                    // 4 - Small blocks
                     [
                         { x: 60, y: 80, w: 60, h: 20 },
-                        { x: 200, y: 60, w: 20, h: 80 },
-                        { x: 260, y: 140, w: 60, h: 20 },
-                        { x: 40, y: 220, w: 20, h: 80 },
-                        { x: 140, y: 200, w: 80, h: 20 },
-                        { x: 280, y: 280, w: 20, h: 80 },
-                        { x: 80, y: 360, w: 60, h: 20 },
-                        { x: 200, y: 380, w: 20, h: 80 },
-                        { x: 100, y: 480, w: 80, h: 20 },
-                        { x: 240, y: 520, w: 60, h: 20 },
+                        { x: 240, y: 80, w: 60, h: 20 },
+                        { x: 150, y: 180, w: 60, h: 20 },
+                        { x: 60, y: 280, w: 60, h: 20 },
+                        { x: 240, y: 280, w: 60, h: 20 },
+                        { x: 150, y: 380, w: 60, h: 20 },
+                        { x: 60, y: 480, w: 60, h: 20 },
+                        { x: 240, y: 480, w: 60, h: 20 },
+                    ],
+                    // 5 - Sparse pillars
+                    [
+                        { x: 100, y: 150, w: 40, h: 40 },
+                        { x: 220, y: 150, w: 40, h: 40 },
+                        { x: 160, y: 300, w: 40, h: 40 },
+                        { x: 100, y: 450, w: 40, h: 40 },
+                        { x: 220, y: 450, w: 40, h: 40 },
+                    ],
+                    // 6 - Vertical pillars
+                    [
+                        { x: 80, y: 100, w: 20, h: 60 },
+                        { x: 170, y: 100, w: 20, h: 60 },
+                        { x: 260, y: 100, w: 20, h: 60 },
+                        { x: 80, y: 280, w: 20, h: 60 },
+                        { x: 170, y: 280, w: 20, h: 60 },
+                        { x: 260, y: 280, w: 20, h: 60 },
+                        { x: 80, y: 460, w: 20, h: 60 },
+                        { x: 170, y: 460, w: 20, h: 60 },
+                        { x: 260, y: 460, w: 20, h: 60 },
+                    ],
+                    // 7 - Staggered blocks
+                    [
+                        { x: 60, y: 80, w: 50, h: 30 },
+                        { x: 250, y: 140, w: 50, h: 30 },
+                        { x: 150, y: 220, w: 50, h: 30 },
+                        { x: 60, y: 320, w: 50, h: 30 },
+                        { x: 250, y: 380, w: 50, h: 30 },
+                        { x: 150, y: 480, w: 50, h: 30 },
                     ],
                 ];
             } else {
-                // Desktop layouts (640x480)
+                // Desktop layouts (640x480) - ALL OPEN, NO ENCLOSED AREAS
                 roomConfigs = [
-                    // 0 - Two vertical dividers
+                    // 0 - Pillars only
                     [
-                        { x: 200, y: 0, w: 20, h: 150 },
-                        { x: 200, y: 200, w: 20, h: 280 },
-                        { x: 420, y: 0, w: 20, h: 280 },
-                        { x: 420, y: 330, w: 20, h: 150 },
-                        { x: 200, y: 300, w: 150, h: 20 },
+                        { x: 150, y: 120, w: 40, h: 40 },
+                        { x: 450, y: 120, w: 40, h: 40 },
+                        { x: 300, y: 220, w: 40, h: 40 },
+                        { x: 150, y: 320, w: 40, h: 40 },
+                        { x: 450, y: 320, w: 40, h: 40 },
                     ],
-                    // 1 - Grid rooms
+                    // 1 - Short horizontal bars
                     [
-                        { x: 150, y: 0, w: 20, h: 200 },
-                        { x: 150, y: 250, w: 20, h: 180 },
-                        { x: 300, y: 100, w: 20, h: 150 },
-                        { x: 300, y: 300, w: 20, h: 120 },
-                        { x: 470, y: 0, w: 20, h: 150 },
-                        { x: 470, y: 200, w: 20, h: 200 },
-                        { x: 150, y: 200, w: 100, h: 20 },
-                        { x: 370, y: 250, w: 100, h: 20 },
+                        { x: 100, y: 100, w: 80, h: 20 },
+                        { x: 450, y: 100, w: 80, h: 20 },
+                        { x: 270, y: 180, w: 100, h: 20 },
+                        { x: 100, y: 280, w: 80, h: 20 },
+                        { x: 450, y: 280, w: 80, h: 20 },
+                        { x: 270, y: 360, w: 100, h: 20 },
                     ],
-                    // 2 - Dense maze
+                    // 2 - Short vertical bars
                     [
-                        { x: 100, y: 80, w: 200, h: 20 },
-                        { x: 100, y: 80, w: 20, h: 150 },
-                        { x: 340, y: 0, w: 20, h: 180 },
-                        { x: 340, y: 230, w: 20, h: 100 },
-                        { x: 200, y: 200, w: 160, h: 20 },
-                        { x: 500, y: 100, w: 20, h: 200 },
-                        { x: 400, y: 300, w: 120, h: 20 },
-                        { x: 100, y: 350, w: 20, h: 130 },
-                        { x: 100, y: 350, w: 200, h: 20 },
-                        { x: 280, y: 350, w: 20, h: 80 },
-                        { x: 450, y: 380, w: 20, h: 100 },
+                        { x: 150, y: 80, w: 20, h: 80 },
+                        { x: 470, y: 80, w: 20, h: 80 },
+                        { x: 310, y: 150, w: 20, h: 80 },
+                        { x: 150, y: 280, w: 20, h: 80 },
+                        { x: 470, y: 280, w: 20, h: 80 },
+                        { x: 310, y: 350, w: 20, h: 80 },
                     ],
-                    // 3 - Arena with pillars
+                    // 3 - Mixed pillars
                     [
-                        { x: 140, y: 100, w: 40, h: 40 },
-                        { x: 460, y: 100, w: 40, h: 40 },
-                        { x: 140, y: 340, w: 40, h: 40 },
-                        { x: 460, y: 340, w: 40, h: 40 },
-                        { x: 300, y: 200, w: 40, h: 40 },
+                        { x: 120, y: 100, w: 50, h: 50 },
+                        { x: 470, y: 100, w: 50, h: 50 },
+                        { x: 295, y: 200, w: 50, h: 50 },
+                        { x: 120, y: 320, w: 50, h: 50 },
+                        { x: 470, y: 320, w: 50, h: 50 },
                     ],
-                    // 4 - Winding corridors
+                    // 4 - Small blocks scattered
                     [
-                        { x: 0, y: 100, w: 400, h: 20 },
-                        { x: 400, y: 100, w: 20, h: 120 },
-                        { x: 200, y: 220, w: 220, h: 20 },
-                        { x: 200, y: 220, w: 20, h: 100 },
-                        { x: 200, y: 320, w: 320, h: 20 },
-                        { x: 100, y: 380, w: 20, h: 100 },
-                        { x: 100, y: 380, w: 300, h: 20 },
+                        { x: 100, y: 80, w: 60, h: 20 },
+                        { x: 480, y: 80, w: 60, h: 20 },
+                        { x: 280, y: 140, w: 80, h: 20 },
+                        { x: 100, y: 220, w: 60, h: 20 },
+                        { x: 480, y: 220, w: 60, h: 20 },
+                        { x: 280, y: 300, w: 80, h: 20 },
+                        { x: 100, y: 380, w: 60, h: 20 },
+                        { x: 480, y: 380, w: 60, h: 20 },
                     ],
-                    // 5 - Central chamber
+                    // 5 - Sparse pillars
                     [
-                        { x: 180, y: 0, w: 20, h: 120 },
-                        { x: 440, y: 0, w: 20, h: 120 },
-                        { x: 180, y: 120, w: 280, h: 20 },
-                        { x: 180, y: 340, w: 280, h: 20 },
-                        { x: 180, y: 360, w: 20, h: 120 },
-                        { x: 440, y: 360, w: 20, h: 120 },
-                        { x: 280, y: 120, w: 20, h: 40 },
-                        { x: 340, y: 320, w: 20, h: 40 },
+                        { x: 200, y: 150, w: 40, h: 40 },
+                        { x: 400, y: 150, w: 40, h: 40 },
+                        { x: 300, y: 250, w: 40, h: 40 },
+                        { x: 200, y: 350, w: 40, h: 40 },
+                        { x: 400, y: 350, w: 40, h: 40 },
                     ],
-                    // 6 - L-rooms and corridors
+                    // 6 - Vertical pillars
                     [
-                        { x: 200, y: 0, w: 20, h: 80 },
-                        { x: 200, y: 130, w: 20, h: 70 },
-                        { x: 0, y: 200, w: 220, h: 20 },
-                        { x: 350, y: 100, w: 20, h: 200 },
-                        { x: 350, y: 100, w: 150, h: 20 },
-                        { x: 100, y: 300, w: 20, h: 180 },
-                        { x: 100, y: 300, w: 200, h: 20 },
-                        { x: 450, y: 250, w: 20, h: 130 },
-                        { x: 350, y: 380, w: 120, h: 20 },
-                        { x: 500, y: 380, w: 20, h: 100 },
+                        { x: 150, y: 100, w: 20, h: 60 },
+                        { x: 300, y: 100, w: 20, h: 60 },
+                        { x: 470, y: 100, w: 20, h: 60 },
+                        { x: 150, y: 300, w: 20, h: 60 },
+                        { x: 300, y: 300, w: 20, h: 60 },
+                        { x: 470, y: 300, w: 20, h: 60 },
                     ],
-                    // 7 - Scattered blocks
+                    // 7 - Staggered blocks
                     [
-                        { x: 100, y: 60, w: 80, h: 20 },
-                        { x: 300, y: 40, w: 20, h: 80 },
-                        { x: 450, y: 80, w: 80, h: 20 },
-                        { x: 60, y: 180, w: 20, h: 80 },
-                        { x: 200, y: 160, w: 100, h: 20 },
-                        { x: 400, y: 200, w: 20, h: 80 },
-                        { x: 530, y: 180, w: 20, h: 80 },
-                        { x: 120, y: 300, w: 80, h: 20 },
-                        { x: 280, y: 280, w: 20, h: 80 },
-                        { x: 450, y: 340, w: 80, h: 20 },
-                        { x: 160, y: 400, w: 100, h: 20 },
-                        { x: 360, y: 420, w: 20, h: 60 },
+                        { x: 120, y: 80, w: 60, h: 30 },
+                        { x: 460, y: 120, w: 60, h: 30 },
+                        { x: 290, y: 180, w: 60, h: 30 },
+                        { x: 120, y: 260, w: 60, h: 30 },
+                        { x: 460, y: 300, w: 60, h: 30 },
+                        { x: 290, y: 380, w: 60, h: 30 },
                     ],
-                    // 8 - Ring layout
+                    // 8 - Large pillars
                     [
-                        { x: 160, y: 80, w: 320, h: 20 },
-                        { x: 160, y: 80, w: 20, h: 130 },
-                        { x: 460, y: 80, w: 20, h: 130 },
-                        { x: 160, y: 280, w: 20, h: 130 },
-                        { x: 460, y: 280, w: 20, h: 130 },
-                        { x: 160, y: 390, w: 320, h: 20 },
-                        { x: 280, y: 180, w: 80, h: 20 },
-                        { x: 280, y: 290, w: 80, h: 20 },
+                        { x: 140, y: 110, w: 60, h: 60 },
+                        { x: 440, y: 110, w: 60, h: 60 },
+                        { x: 290, y: 200, w: 60, h: 60 },
+                        { x: 140, y: 310, w: 60, h: 60 },
+                        { x: 440, y: 310, w: 60, h: 60 },
                     ],
-                    // 9 - Diagonal feel
+                    // 9 - Diagonal pattern pillars
                     [
-                        { x: 80, y: 0, w: 20, h: 120 },
-                        { x: 80, y: 100, w: 120, h: 20 },
-                        { x: 200, y: 100, w: 20, h: 100 },
-                        { x: 200, y: 200, w: 140, h: 20 },
-                        { x: 320, y: 200, w: 20, h: 100 },
-                        { x: 320, y: 300, w: 160, h: 20 },
-                        { x: 460, y: 300, w: 20, h: 100 },
-                        { x: 200, y: 360, w: 260, h: 20 },
-                        { x: 100, y: 400, w: 20, h: 80 },
+                        { x: 100, y: 80, w: 40, h: 40 },
+                        { x: 250, y: 140, w: 40, h: 40 },
+                        { x: 400, y: 80, w: 40, h: 40 },
+                        { x: 180, y: 240, w: 40, h: 40 },
+                        { x: 350, y: 240, w: 40, h: 40 },
+                        { x: 100, y: 340, w: 40, h: 40 },
+                        { x: 250, y: 380, w: 40, h: 40 },
+                        { x: 500, y: 340, w: 40, h: 40 },
                     ],
                 ];
-            }
-
-            // Pick layout: level 1 always uses config 0, then rotate through all
-            let configIndex;
-            if (levelNum <= 1) {
-                configIndex = 0;
-            } else {
-                // Deterministic but varied selection based on level
-                configIndex = ((levelNum - 1) * 3 + levelNum) % roomConfigs.length;
-            }
-            walls.push(...roomConfigs[configIndex]);
-
-            // Sync walls to G so pointInWalls sees current level's walls
-            G.walls = walls;
-
-            // Build reachability map from player spawn via BFS flood-fill
-            // Use player size so gaps too narrow to walk through aren't considered reachable
-            const CELL = 10;
-            const pSize = Math.max(player.width, player.height);
-            const cols = Math.ceil(W / CELL);
-            const rows = Math.ceil(H / CELL);
-            const reachable = new Set();
-            const startCol = Math.floor(player.x / CELL);
-            const startRow = Math.floor(player.y / CELL);
-            const queue = [[startCol, startRow]];
-            reachable.add(startCol + ',' + startRow);
-            while (queue.length > 0) {
-                const [c, r] = queue.shift();
-                const neighbors = [[c-1,r],[c+1,r],[c,r-1],[c,r+1]];
-                for (const [nc, nr] of neighbors) {
-                    if (nc < 0 || nr < 0 || nc >= cols || nr >= rows) continue;
-                    const key = nc + ',' + nr;
-                    if (reachable.has(key)) continue;
-                    const cx = nc * CELL + CELL / 2;
-                    const cy = nr * CELL + CELL / 2;
-                    if (!pointInWalls(cx, cy, pSize, pSize)) {
-                        reachable.add(key);
-                        queue.push([nc, nr]);
-                    }
-                }
-            }
-            function isReachable(x, y) {
-                return reachable.has(Math.floor(x / CELL) + ',' + Math.floor(y / CELL));
             }
 
             // Get dungeon difficulty settings
             const dungeonSettings = DUNGEONS[selectedDungeon] || DUNGEONS.dungeon;
+
+            // Check if this is a boss level
+            const bossInterval = Math.max(5, Math.floor(10 / (dungeonSettings.difficulty || 1)));
+            const isBossLevel = levelNum % bossInterval === 0;
+
+            // Clear boss state
+            bossWarningZones = [];
+            G.bossWarningZones = bossWarningZones;
+            activeBoss = null;
+
+            // Pick layout: boss levels use special arena, otherwise rotate through configs
+            if (isBossLevel) {
+                // Boss arena - open space with corner pillars for cover
+                if (isMobile) {
+                    walls.push(
+                        { x: 60, y: 100, w: 40, h: 40 },
+                        { x: 260, y: 100, w: 40, h: 40 },
+                        { x: 60, y: 450, w: 40, h: 40 },
+                        { x: 260, y: 450, w: 40, h: 40 },
+                        { x: 150, y: 270, w: 60, h: 60 }
+                    );
+                } else {
+                    walls.push(
+                        { x: 80, y: 80, w: 50, h: 50 },
+                        { x: 510, y: 80, w: 50, h: 50 },
+                        { x: 80, y: 350, w: 50, h: 50 },
+                        { x: 510, y: 350, w: 50, h: 50 },
+                        { x: 295, y: 200, w: 50, h: 80 }
+                    );
+                }
+            } else {
+                let configIndex;
+                if (levelNum <= 1) {
+                    configIndex = 0;
+                } else {
+                    // Deterministic but varied selection based on level
+                    configIndex = ((levelNum - 1) * 3 + levelNum) % roomConfigs.length;
+                }
+                walls.push(...roomConfigs[configIndex]);
+            }
+
+            // Sync walls to G so pointInWalls sees current level's walls
+            G.walls = walls;
+
             const countMult = dungeonSettings.enemyCountMult || 1;
             const healthMult = dungeonSettings.enemyHealthMult || 1;
             const speedMult = dungeonSettings.enemySpeedMult || 1;
+
+            // Build reachability map using flood-fill from player spawn
+            const gridSize = 10; // Smaller grid for better accuracy
+            const gridW = Math.ceil(W / gridSize);
+            const gridH = Math.ceil(H / gridSize);
+            const reachable = new Array(gridW * gridH).fill(false);
+
+            // Mark cells reachable from player spawn using BFS
+            const startGX = Math.floor(player.x / gridSize);
+            const startGY = Math.floor(player.y / gridSize);
+            const queue = [[startGX, startGY]];
+            const visited = new Set();
+            visited.add(startGX + ',' + startGY);
+
+            while (queue.length > 0) {
+                const [gx, gy] = queue.shift();
+                const idx = gy * gridW + gx;
+                const worldX = gx * gridSize + gridSize / 2;
+                const worldY = gy * gridSize + gridSize / 2;
+
+                // Check if this cell is walkable (not in a wall) - use small check size
+                if (!pointInWalls(worldX, worldY, 8, 8)) {
+                    reachable[idx] = true;
+
+                    // Add neighbors to queue (including diagonals for better coverage)
+                    const neighbors = [
+                        [gx-1, gy], [gx+1, gy], [gx, gy-1], [gx, gy+1],
+                        [gx-1, gy-1], [gx+1, gy-1], [gx-1, gy+1], [gx+1, gy+1]
+                    ];
+                    for (const [nx, ny] of neighbors) {
+                        if (nx >= 0 && nx < gridW && ny >= 0 && ny < gridH) {
+                            const key = nx + ',' + ny;
+                            if (!visited.has(key)) {
+                                visited.add(key);
+                                queue.push([nx, ny]);
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Helper to check if a world position is reachable
+            function isReachable(x, y) {
+                const gx = Math.floor(x / gridSize);
+                const gy = Math.floor(y / gridSize);
+                if (gx < 0 || gx >= gridW || gy < 0 || gy >= gridH) return false;
+                return reachable[gy * gridW + gx];
+            }
 
             // Spawn enemies - find valid positions not in walls
             const baseCount = 3 + levelNum * 2;
@@ -948,9 +968,10 @@
                 }
                 const enemyType = ENEMY_TYPES[type];
 
-                // Check not in wall and not too close to player spawn
+                // Check not in wall, not too close to player spawn, and reachable via pathfinding
                 const distToPlayer = Math.hypot(x - player.x, y - player.y);
-                if (!pointInWalls(x, y, enemyType.size, enemyType.size) && distToPlayer > 100 && isReachable(x, y)) {
+                const enemyCheckSize = enemyType.size + 24; // Large padding to avoid spawning in/near walls
+                if (!pointInWalls(x, y, enemyCheckSize, enemyCheckSize) && distToPlayer > 100 && isReachable(x, y)) {
                     const baseHealth = enemyType.health + levelNum * 5;
                     enemies.push({
                         x: x,
@@ -970,33 +991,34 @@
                 }
             }
 
-            // Spawn boss every 10 levels (or more frequently on harder difficulties)
-            const bossInterval = Math.max(5, Math.floor(10 / (dungeonSettings.difficulty || 1)));
-            if (levelNum % bossInterval === 0) {
+            // Spawn boss on boss levels
+            if (isBossLevel) {
                 const bossType = ENEMY_TYPES.boss;
                 const bossHealth = Math.floor((bossType.health + levelNum * 20) * healthMult);
-                for (let i = 0; i < 100; i++) {
-                    const bx = 50 + Math.random() * (W - 100);
-                    const by = 50 + Math.random() * (H - 100);
-                    const distToPlayer = Math.hypot(bx - player.x, by - player.y);
-                    if (!pointInWalls(bx, by, bossType.size, bossType.size) && distToPlayer > 150 && isReachable(bx, by)) {
-                        enemies.push({
-                            x: bx,
-                            y: by,
-                            type: 'boss',
-                            width: bossType.size,
-                            height: bossType.size,
-                            speed: bossType.speed * speedMult,
-                            health: bossHealth,
-                            maxHealth: bossHealth,
-                            shootCooldown: 0,
-                            alertDistance: 400,
-                            shootDistance: bossType.shootDist,
-                            canShoot: bossType.canShoot
-                        });
-                        break;
-                    }
-                }
+                // Spawn boss in center-ish area on boss levels
+                const bx = isMobile ? W / 2 : W / 2;
+                const by = isMobile ? 180 : 150;
+                const boss = {
+                    x: bx,
+                    y: by,
+                    type: 'boss',
+                    width: bossType.size,
+                    height: bossType.size,
+                    speed: bossType.speed * speedMult,
+                    health: bossHealth,
+                    maxHealth: bossHealth,
+                    shootCooldown: 0,
+                    alertDistance: 600,
+                    shootDistance: bossType.shootDist,
+                    canShoot: bossType.canShoot,
+                    // Boss special attack properties
+                    specialAttackCooldown: 120,
+                    specialAttackTimer: 0,
+                    attackPhase: 'idle', // 'idle', 'warning', 'attacking'
+                    attackType: null
+                };
+                enemies.push(boss);
+                activeBoss = boss;
             }
 
             // Spawn pickups at valid positions (more on easier difficulties)
@@ -1074,7 +1096,7 @@
             for (let d = 0; d < numDecos; d++) {
                 const dx = 30 + Math.random() * (W - 60);
                 const dy = 30 + Math.random() * (H - 60);
-                if (!pointInWalls(dx, dy, 4, 4)) {
+                if (!pointInWalls(dx, dy, 4, 4) && isReachable(dx, dy)) {
                     const variant = Math.floor(Math.random() * 6);
                     const size = 2 + Math.floor(Math.random() * 5);
                     floorDecorations.push({ x: dx, y: dy, variant: variant, size: size });
@@ -1086,11 +1108,13 @@
             const numProps = isMobile ? 5 : 8;
             for (let p = 0; p < numProps; p++) {
                 for (let attempt = 0; attempt < 30; attempt++) {
-                    const px = 40 + Math.random() * (W - 80);
-                    const py = 40 + Math.random() * (H - 80);
-                    // Must not be in walls, not near player spawn, not overlapping other props
+                    const px = 50 + Math.random() * (W - 100);
+                    const py = 50 + Math.random() * (H - 100);
+                    const propSize = 8 + Math.floor(Math.random() * 10);
+                    // Must not be in walls (with padding), not near player spawn, reachable, not overlapping other props
                     const distToSpawn = Math.hypot(px - player.x, py - player.y);
-                    if (!pointInWalls(px, py, 24, 24) && distToSpawn > 70) {
+                    const checkSize = propSize * 2 + 10; // Extra padding to avoid wall overlap
+                    if (!pointInWalls(px, py, checkSize, checkSize) && distToSpawn > 70 && isReachable(px, py)) {
                         let overlap = false;
                         for (const existing of levelProps) {
                             if (Math.hypot(px - existing.x, py - existing.y) < 40) {
@@ -1100,7 +1124,6 @@
                         }
                         if (!overlap) {
                             const propVariant = Math.floor(Math.random() * 4);
-                            const propSize = 8 + Math.floor(Math.random() * 10);
                             levelProps.push({ x: px, y: py, variant: propVariant, size: propSize });
                             break;
                         }
@@ -1117,6 +1140,24 @@
                     if (!pointInWalls(gx, gy, 6, 6)) {
                         floorDecorations.push({ x: gx, y: gy, variant: 10, size: 3 + Math.floor(Math.random() * 4) }); // variant 10 = grass
                     }
+                }
+            }
+
+            // Boss arena: add special decorations (skull pattern in center, torches near pillars)
+            if (isBossLevel) {
+                // Central skull decoration (variant 20 = boss arena skull)
+                floorDecorations.push({ x: W / 2, y: H / 2 - 20, variant: 20, size: isMobile ? 40 : 60 });
+                // Corner torch decorations (variant 21 = boss arena torch)
+                if (isMobile) {
+                    floorDecorations.push({ x: 80, y: 120, variant: 21, size: 12 });
+                    floorDecorations.push({ x: 280, y: 120, variant: 21, size: 12 });
+                    floorDecorations.push({ x: 80, y: 470, variant: 21, size: 12 });
+                    floorDecorations.push({ x: 280, y: 470, variant: 21, size: 12 });
+                } else {
+                    floorDecorations.push({ x: 105, y: 100, variant: 21, size: 14 });
+                    floorDecorations.push({ x: 535, y: 100, variant: 21, size: 14 });
+                    floorDecorations.push({ x: 105, y: 370, variant: 21, size: 14 });
+                    floorDecorations.push({ x: 535, y: 370, variant: 21, size: 14 });
                 }
             }
         }
@@ -1793,6 +1834,134 @@
                 }
 
                 if (enemy.shootCooldown > 0) enemy.shootCooldown--;
+
+                // Boss special attacks
+                if (enemy.type === 'boss' && enemy.specialAttackCooldown !== undefined) {
+                    updateBossAttack(enemy, playerInSafeZone);
+                }
+            }
+
+            // Update warning zones
+            for (let i = bossWarningZones.length - 1; i >= 0; i--) {
+                const zone = bossWarningZones[i];
+                zone.timer--;
+
+                if (zone.timer <= 0) {
+                    // Attack lands - deal damage if player is in zone
+                    if (!playerInSafeZone) {
+                        let playerHit = false;
+                        if (zone.type === 'circle') {
+                            const dist = Math.hypot(player.x - zone.x, player.y - zone.y);
+                            playerHit = dist < zone.radius;
+                        } else if (zone.type === 'line') {
+                            // Check if player is in line attack
+                            const lineLen = Math.hypot(zone.endX - zone.x, zone.endY - zone.y);
+                            const dx = (zone.endX - zone.x) / lineLen;
+                            const dy = (zone.endY - zone.y) / lineLen;
+                            const px = player.x - zone.x;
+                            const py = player.y - zone.y;
+                            const proj = px * dx + py * dy;
+                            if (proj >= 0 && proj <= lineLen) {
+                                const perpDist = Math.abs(px * dy - py * dx);
+                                playerHit = perpDist < zone.width / 2 + player.width / 2;
+                            }
+                        }
+
+                        if (playerHit) {
+                            player.health -= Math.floor(zone.damage * (1 - playerArmor));
+                            if (player.health <= 0) gameState = 'gameover';
+                        }
+                    }
+
+                    // Create explosion particles
+                    for (let k = 0; k < 15; k++) {
+                        const angle = Math.random() * Math.PI * 2;
+                        const speed = Math.random() * 5 + 2;
+                        particles.push({
+                            x: zone.type === 'circle' ? zone.x : (zone.x + zone.endX) / 2,
+                            y: zone.type === 'circle' ? zone.y : (zone.y + zone.endY) / 2,
+                            vx: Math.cos(angle) * speed,
+                            vy: Math.sin(angle) * speed,
+                            life: 25,
+                            color: zone.color || '#ff4500'
+                        });
+                    }
+
+                    bossWarningZones.splice(i, 1);
+                }
+            }
+            G.bossWarningZones = bossWarningZones;
+        }
+
+        // Update boss special attacks
+        function updateBossAttack(boss, playerInSafeZone) {
+            boss.specialAttackTimer++;
+
+            if (boss.attackPhase === 'idle') {
+                if (boss.specialAttackTimer >= boss.specialAttackCooldown) {
+                    // Start a new special attack
+                    boss.attackPhase = 'warning';
+                    boss.specialAttackTimer = 0;
+
+                    // Choose attack type based on dungeon and randomness
+                    const attacks = ['slam', 'sweep', 'barrage'];
+                    boss.attackType = attacks[Math.floor(Math.random() * attacks.length)];
+
+                    // Create warning zones based on attack type
+                    if (boss.attackType === 'slam') {
+                        // Ground slam - circle around player's position
+                        bossWarningZones.push({
+                            type: 'circle',
+                            x: player.x,
+                            y: player.y,
+                            radius: 60,
+                            timer: 60, // 1 second warning
+                            damage: 25 * currentDamageMult,
+                            color: '#ff4500'
+                        });
+                    } else if (boss.attackType === 'sweep') {
+                        // Line sweep from boss towards player
+                        const angle = Math.atan2(player.y - boss.y, player.x - boss.x);
+                        const len = 200;
+                        bossWarningZones.push({
+                            type: 'line',
+                            x: boss.x,
+                            y: boss.y,
+                            endX: boss.x + Math.cos(angle) * len,
+                            endY: boss.y + Math.sin(angle) * len,
+                            width: 40,
+                            timer: 45,
+                            damage: 30 * currentDamageMult,
+                            color: '#ff6b35'
+                        });
+                    } else if (boss.attackType === 'barrage') {
+                        // Multiple circles around the arena
+                        const numCircles = 3;
+                        for (let i = 0; i < numCircles; i++) {
+                            const randX = 60 + Math.random() * (W - 120);
+                            const randY = 60 + Math.random() * (H - 120);
+                            bossWarningZones.push({
+                                type: 'circle',
+                                x: randX,
+                                y: randY,
+                                radius: 45,
+                                timer: 50 + i * 15, // Staggered timing
+                                damage: 20 * currentDamageMult,
+                                color: '#ff0000'
+                            });
+                        }
+                    }
+
+                    G.bossWarningZones = bossWarningZones;
+                }
+            } else if (boss.attackPhase === 'warning') {
+                // Wait for warning zones to clear
+                if (bossWarningZones.length === 0) {
+                    boss.attackPhase = 'idle';
+                    boss.specialAttackTimer = 0;
+                    // Randomize next cooldown
+                    boss.specialAttackCooldown = 90 + Math.random() * 60;
+                }
             }
         }
 
@@ -2414,6 +2583,41 @@
                 }
             }
 
+            // Draw boss warning zones (before enemies so they appear under them)
+            for (const zone of bossWarningZones) {
+                ctx.save();
+                // Flashing effect as timer decreases
+                const flash = Math.sin(zone.timer * 0.3) * 0.15 + 0.35;
+                ctx.globalAlpha = flash;
+
+                if (zone.type === 'circle') {
+                    ctx.fillStyle = zone.color || '#ff0000';
+                    ctx.beginPath();
+                    ctx.arc(zone.x, zone.y, zone.radius, 0, Math.PI * 2);
+                    ctx.fill();
+                    // Border
+                    ctx.globalAlpha = flash + 0.3;
+                    ctx.strokeStyle = '#ffffff';
+                    ctx.lineWidth = 2;
+                    ctx.stroke();
+                } else if (zone.type === 'line') {
+                    ctx.fillStyle = zone.color || '#ff0000';
+                    const angle = Math.atan2(zone.endY - zone.y, zone.endX - zone.x);
+                    const len = Math.hypot(zone.endX - zone.x, zone.endY - zone.y);
+                    ctx.save();
+                    ctx.translate(zone.x, zone.y);
+                    ctx.rotate(angle);
+                    ctx.fillRect(0, -zone.width / 2, len, zone.width);
+                    // Border
+                    ctx.globalAlpha = flash + 0.3;
+                    ctx.strokeStyle = '#ffffff';
+                    ctx.lineWidth = 2;
+                    ctx.strokeRect(0, -zone.width / 2, len, zone.width);
+                    ctx.restore();
+                }
+                ctx.restore();
+            }
+
             // Draw enemies
             for (const enemy of enemies) {
                 drawEnemy(enemy);
@@ -2544,6 +2748,47 @@
                     ctx.fillStyle = at.color;
                     ctx.font = '9px monospace';
                     ctx.fillText('A' + playerArmorTier, 128, 32);
+                }
+
+                // Boss health bar (at top of screen, centered)
+                const boss = enemies.find(e => e.type === 'boss');
+                if (boss) {
+                    const barWidth = isMobile ? 280 : 400;
+                    const barHeight = isMobile ? 16 : 20;
+                    const barX = (canvas.width - barWidth) / 2;
+                    const barY = isMobile ? 60 : 15;
+
+                    // Boss name
+                    const bossData = ENEMY_TYPES.boss;
+                    ctx.fillStyle = '#fff';
+                    ctx.font = isMobile ? 'bold 12px monospace' : 'bold 16px monospace';
+                    ctx.textAlign = 'center';
+                    ctx.fillText(bossData.name.toUpperCase(), canvas.width / 2, barY - 4);
+
+                    // Background
+                    ctx.fillStyle = '#222';
+                    ctx.fillRect(barX - 2, barY, barWidth + 4, barHeight + 4);
+
+                    // Health bar border
+                    ctx.fillStyle = '#8b0000';
+                    ctx.fillRect(barX, barY + 2, barWidth, barHeight);
+
+                    // Health bar fill
+                    const healthPercent = boss.health / boss.maxHealth;
+                    const healthColor = healthPercent > 0.5 ? '#e74c3c' : (healthPercent > 0.25 ? '#ff6b35' : '#ff0000');
+                    ctx.fillStyle = healthColor;
+                    ctx.fillRect(barX, barY + 2, barWidth * healthPercent, barHeight);
+
+                    // Health bar shine
+                    ctx.fillStyle = 'rgba(255,255,255,0.2)';
+                    ctx.fillRect(barX, barY + 2, barWidth * healthPercent, barHeight / 3);
+
+                    // Health text
+                    ctx.fillStyle = '#fff';
+                    ctx.font = isMobile ? '10px monospace' : '12px monospace';
+                    ctx.fillText(`${boss.health} / ${boss.maxHealth}`, canvas.width / 2, barY + barHeight - 2);
+
+                    ctx.textAlign = 'left';
                 }
             }
         }
