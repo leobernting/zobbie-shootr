@@ -1,5 +1,11 @@
 // Pure data constants — no logic, no side effects.
 
+// Multiplayer player colors
+const PLAYER_COLORS = {
+    p1: { main: '#4ecdc4', dark: '#2ea8a0' },
+    p2: { main: '#e74c3c', dark: '#c0392b' }
+};
+
 const CLASSES = {
     default: { name: 'Rookie', description: 'No bonuses', price: 0, weapon: 'pistol', health: 100, speed: 1.5, ammoBonus: 0 },
     soldier: { name: 'Soldier', description: 'Start with SMG', price: 100, weapon: 'smg', health: 100, speed: 1.5, ammoBonus: 0 },
@@ -111,7 +117,8 @@ const DUNGEONS = {
         enemyHealthMult: 0.8,
         enemySpeedMult: 0.9,
         enemyDamageMult: 0.8,
-        pickupChance: 0.5
+        pickupChance: 0.5,
+        lighting: { ambientColor: [5, 5, 10], darknessLevel: 0.45, playerLightRadius: 220, playerLightIntensity: 1.0 }
     },
     desert: {
         name: 'Desert Tomb',
@@ -126,7 +133,8 @@ const DUNGEONS = {
         enemyHealthMult: 1.0,
         enemySpeedMult: 1.0,
         enemyDamageMult: 1.0,
-        pickupChance: 0.4
+        pickupChance: 0.4,
+        lighting: { ambientColor: [5, 5, 10], darknessLevel: 0.40, playerLightRadius: 230, playerLightIntensity: 1.0 }
     },
     dungeon: {
         name: 'Dark Dungeon',
@@ -141,7 +149,8 @@ const DUNGEONS = {
         enemyHealthMult: 1.0,
         enemySpeedMult: 1.0,
         enemyDamageMult: 1.0,
-        pickupChance: 0.4
+        pickupChance: 0.4,
+        lighting: { ambientColor: [5, 5, 10], darknessLevel: 0.55, playerLightRadius: 180, playerLightIntensity: 1.0 }
     },
     ice: {
         name: 'Frozen Cavern',
@@ -156,7 +165,8 @@ const DUNGEONS = {
         enemyHealthMult: 1.2,
         enemySpeedMult: 1.1,
         enemyDamageMult: 1.2,
-        pickupChance: 0.35
+        pickupChance: 0.35,
+        lighting: { ambientColor: [5, 5, 10], darknessLevel: 0.45, playerLightRadius: 210, playerLightIntensity: 1.0 }
     },
     volcano: {
         name: 'Volcanic Lair',
@@ -171,6 +181,7 @@ const DUNGEONS = {
         enemyHealthMult: 1.4,
         enemySpeedMult: 1.2,
         enemyDamageMult: 1.5,
-        pickupChance: 0.3
+        pickupChance: 0.3,
+        lighting: { ambientColor: [5, 5, 10], darknessLevel: 0.35, playerLightRadius: 200, playerLightIntensity: 1.0 }
     }
 };

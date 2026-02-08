@@ -224,3 +224,71 @@ function drawPlayer() {
     ctx.fillRect(px + 4 + eyeOffsetX, py + 4 + eyeOffsetY, 3, 3);
     ctx.fillRect(px + 9 + eyeOffsetX, py + 4 + eyeOffsetY, 3, 3);
 }
+
+// Draw remote player (P2) with different color
+function drawRemotePlayer() {
+    var ctx = G.ctx;
+    var rp = G.remotePlayer;
+    if (!rp || !rp.connected) return;
+
+    // Use P2 colors
+    const p2Color = PLAYER_COLORS.p2.main;
+    const p2ColorDark = PLAYER_COLORS.p2.dark;
+
+    const width = 16;
+    const height = 16;
+    const px = Math.floor(rp.x - width / 2);
+    const py = Math.floor(rp.y - height / 2);
+
+    // Body (using P2 color)
+    drawPixelRect(px, py, width, height, p2Color, p2ColorDark);
+
+    // "P2" label above player
+    ctx.fillStyle = '#fff';
+    ctx.font = '10px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText('P2', rp.x, py - 8);
+    ctx.textAlign = 'left';
+
+    // Draw weapon
+    const weapon = WEAPONS[rp.weapon];
+    const weaponColor = weapon ? weapon.color : '#666';
+
+    ctx.save();
+    ctx.translate(rp.x, rp.y);
+    ctx.rotate(rp.angle);
+
+    // Simplified weapon rendering for remote player
+    if (weapon && weapon.melee) {
+        const swingOffset = rp.swinging ? (rp.swingProgress - 0.5) * (weapon.arc || Math.PI/2) : 0;
+        ctx.rotate(swingOffset);
+        ctx.fillStyle = weaponColor;
+        ctx.fillRect(8, -3, 25, 6);
+    } else {
+        ctx.fillStyle = '#444';
+        ctx.fillRect(4, -3, 14, 6);
+        ctx.fillStyle = weaponColor;
+        ctx.fillRect(6, -2, 12, 4);
+    }
+
+    ctx.restore();
+
+    // Eyes
+    ctx.fillStyle = '#fff';
+    const eyeOffsetX = Math.cos(rp.angle) * 3;
+    const eyeOffsetY = Math.sin(rp.angle) * 3;
+    ctx.fillRect(px + 4 + eyeOffsetX, py + 4 + eyeOffsetY, 3, 3);
+    ctx.fillRect(px + 9 + eyeOffsetX, py + 4 + eyeOffsetY, 3, 3);
+
+    // Health bar below remote player
+    if (rp.health < rp.maxHealth) {
+        const barWidth = 20;
+        const barHeight = 3;
+        const barX = rp.x - barWidth / 2;
+        const barY = py + height + 4;
+        ctx.fillStyle = '#333';
+        ctx.fillRect(barX, barY, barWidth, barHeight);
+        ctx.fillStyle = '#e74c3c';
+        ctx.fillRect(barX, barY, barWidth * (rp.health / rp.maxHealth), barHeight);
+    }
+}
