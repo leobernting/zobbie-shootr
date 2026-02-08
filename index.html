@@ -1859,7 +1859,7 @@
 
                     // Melee damage for chargers
                     if (!enemy.canShoot && dist < 20 && !playerInSafeZone && enemy.shootCooldown <= 0) {
-                        if (!godMode) player.health -= Math.floor(15 * currentDamageMult * (1 - playerArmor));
+                        if (!godMode) player.health -= Math.floor(8 * currentDamageMult * (1 - playerArmor));
                         enemy.shootCooldown = 30;
                         if (player.health <= 0) gameState = 'gameover';
                     }
