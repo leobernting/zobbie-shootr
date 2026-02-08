@@ -2367,21 +2367,20 @@
                     ctx.fillText(diffLabels[diff - 1] || 'Normal', x + btnW/2, y + (isMobile ? 64 : 70));
                 }
 
-                // Multiplayer button (row above other buttons)
-                const mpBtnW = isMobile ? 140 : 160;
-                const mpBtnH = isMobile ? 30 : 35;
-                const mpBtnX = canvas.width/2 - mpBtnW/2;
-                const mpBtnY = canvas.height - (isMobile ? 105 : 115);
-                menuButtons.push({ x: mpBtnX, y: mpBtnY, w: mpBtnW, h: mpBtnH, action: 'multiplayer' });
-
-                ctx.fillStyle = '#8e44ad';
-                ctx.fillRect(mpBtnX, mpBtnY, mpBtnW, mpBtnH);
-                ctx.fillStyle = '#9b59b6';
-                ctx.fillRect(mpBtnX + 3, mpBtnY + 3, mpBtnW - 6, mpBtnH - 6);
-                ctx.fillStyle = '#fff';
-                ctx.font = isMobile ? '12px monospace' : '14px monospace';
-                ctx.textAlign = 'center';
-                ctx.fillText('MULTIPLAYER', mpBtnX + mpBtnW/2, mpBtnY + (isMobile ? 20 : 23));
+                // Multiplayer button - hidden for now
+                // const mpBtnW = isMobile ? 140 : 160;
+                // const mpBtnH = isMobile ? 30 : 35;
+                // const mpBtnX = canvas.width/2 - mpBtnW/2;
+                // const mpBtnY = canvas.height - (isMobile ? 105 : 115);
+                // menuButtons.push({ x: mpBtnX, y: mpBtnY, w: mpBtnW, h: mpBtnH, action: 'multiplayer' });
+                // ctx.fillStyle = '#8e44ad';
+                // ctx.fillRect(mpBtnX, mpBtnY, mpBtnW, mpBtnH);
+                // ctx.fillStyle = '#9b59b6';
+                // ctx.fillRect(mpBtnX + 3, mpBtnY + 3, mpBtnW - 6, mpBtnH - 6);
+                // ctx.fillStyle = '#fff';
+                // ctx.font = isMobile ? '12px monospace' : '14px monospace';
+                // ctx.textAlign = 'center';
+                // ctx.fillText('MULTIPLAYER', mpBtnX + mpBtnW/2, mpBtnY + (isMobile ? 20 : 23));
 
                 // Shop button
                 const shopBtnW = isMobile ? 100 : 120;
