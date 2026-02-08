@@ -1859,7 +1859,7 @@
 
                     // Melee damage for chargers
                     if (!enemy.canShoot && dist < 20 && !playerInSafeZone && enemy.shootCooldown <= 0) {
-                        player.health -= Math.floor(15 * currentDamageMult * (1 - playerArmor));
+                        if (!godMode) player.health -= Math.floor(15 * currentDamageMult * (1 - playerArmor));
                         enemy.shootCooldown = 30;
                         if (player.health <= 0) gameState = 'gameover';
                     }
@@ -1905,7 +1905,7 @@
                             }
                         }
 
-                        if (playerHit) {
+                        if (playerHit && !godMode) {
                             player.health -= Math.floor(zone.damage * (1 - playerArmor));
                             if (player.health <= 0) gameState = 'gameover';
                         }
@@ -2111,7 +2111,7 @@
                     const dist = Math.hypot(b.x - player.x, b.y - player.y);
                     const playerInSafeZone = Math.hypot(player.x - safeZone.x, player.y - safeZone.y) < safeZone.radius;
                     if (dist < 12 && !playerInSafeZone) {
-                        player.health -= Math.floor(10 * currentDamageMult * (1 - playerArmor));
+                        if (!godMode) player.health -= Math.floor(10 * currentDamageMult * (1 - playerArmor));
                         bullets.splice(i, 1);
 
                         if (player.health <= 0) {
@@ -2788,6 +2788,13 @@
                     ctx.fillText('A' + playerArmorTier, 128, 32);
                 }
 
+                // God mode indicator
+                if (godMode) {
+                    ctx.fillStyle = '#ff0';
+                    ctx.font = 'bold 12px monospace';
+                    ctx.fillText('GOD MODE', 20, 62);
+                }
+
                 // Boss health bar (at top of screen, centered)
                 const boss = enemies.find(e => e.type === 'boss');
                 if (boss) {
@@ -2869,18 +2876,30 @@
         // Cheat code buffer
         let cheatBuffer = '';
         const CHEAT_SKIP = 'gg';
+        const CHEAT_GOD = 'ee';
+        let godMode = false;
 
         // Event listeners
         document.addEventListener('keydown', (e) => {
             keys[e.key] = true;
-            // Cheat code detection
-            if (gameState === 'playing') {
-                cheatBuffer += e.key;
-                if (cheatBuffer.length > 10) cheatBuffer = cheatBuffer.slice(-10);
-                if (cheatBuffer.endsWith(CHEAT_SKIP)) {
-                    cheatBuffer = '';
-                    enemies.length = 0;
-                }
+            // Cheat code detection - works in all states
+            cheatBuffer += e.key.toLowerCase();
+            if (cheatBuffer.length > 10) cheatBuffer = cheatBuffer.slice(-10);
+            console.log('Key pressed:', e.key, 'Buffer:', cheatBuffer, 'State:', gameState);
+            if (cheatBuffer.endsWith(CHEAT_SKIP) && gameState === 'playing') {
+                cheatBuffer = '';
+                enemies.length = 0;
+                console.log('CHEAT: Enemies cleared!');
+            }
+            if (cheatBuffer.endsWith(CHEAT_GOD)) {
+                cheatBuffer = '';
+                godMode = true;
+                player.weapon = 'flamethrower';
+                player.ammo = 999;
+                player.maxAmmo = 999;
+                player.health = 9999;
+                player.maxHealth = 9999;
+                console.log('GOD MODE ACTIVATED!');
             }
             if (e.key === ' ' && gameState === 'gameover') {
                 clearSavedRun();
