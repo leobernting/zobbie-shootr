@@ -1413,10 +1413,10 @@
             let newY = player.y;
 
             // Keyboard controls
-            if (keys['w'] || keys['W']) newY -= player.speed;
-            if (keys['s'] || keys['S']) newY += player.speed;
-            if (keys['a'] || keys['A']) newX -= player.speed;
-            if (keys['d'] || keys['D']) newX += player.speed;
+            if (keys['w']) newY -= player.speed;
+            if (keys['s']) newY += player.speed;
+            if (keys['a']) newX -= player.speed;
+            if (keys['d']) newX += player.speed;
 
             // Touch controls (mobile)
             if (isMobile) {
@@ -1499,7 +1499,7 @@
             }
 
             // Auto-reload when empty, or manual reload with R (not for melee or placeable weapons)
-            if (!weapon.melee && !weapon.placeable && !player.reloading && (player.ammo === 0 || keys['r'] || keys['R'])) {
+            if (!weapon.melee && !weapon.placeable && !player.reloading && (player.ammo === 0 || keys['r'])) {
                 if (player.ammo < player.maxAmmo) {
                     player.reloading = true;
                     player.reloadTime = 60;
@@ -4222,7 +4222,8 @@
 
         // Event listeners
         document.addEventListener('keydown', (e) => {
-            keys[e.key] = true;
+            const key = e.key.length === 1 ? e.key.toLowerCase() : e.key;
+            keys[key] = true;
 
             // Handle room code input when joining
             if (gameState === 'joining') {
@@ -4254,21 +4255,21 @@
                 enemies.length = 0;
                 console.log('CHEAT: Enemies cleared!');
             }
-            if (e.key === ' ' && gameState === 'gameover') {
+            if (key === ' ' && gameState === 'gameover') {
                 clearSavedRun();
                 resetRunState();
                 gameState = 'menu';
             }
-            if (e.key === 'e' || e.key === 'E') {
+            if (key === 'e') {
                 pickupPressed = true;
             }
-            if (e.key === 'z' || e.key === 'Z') {
+            if (key === 'z') {
                 mouseDown = true;
             }
-            if (e.key === 'm' || e.key === 'M') {
+            if (key === 'm') {
                 Music.toggleMute();
             }
-            if ((e.key === 'Escape' || e.key === 'p') && (gameState === 'playing' || gameState === 'paused' || gameState === 'multiplayer-playing')) {
+            if ((key === 'Escape' || key === 'p') && (gameState === 'playing' || gameState === 'paused' || gameState === 'multiplayer-playing')) {
                 if (gameState === 'multiplayer-playing') {
                     // In multiplayer, escape disconnects
                     cleanupMultiplayer();
@@ -4280,8 +4281,9 @@
         });
 
         document.addEventListener('keyup', (e) => {
-            keys[e.key] = false;
-            if (e.key === 'z' || e.key === 'Z') {
+            const key = e.key.length === 1 ? e.key.toLowerCase() : e.key;
+            keys[key] = false;
+            if (key === 'z') {
                 mouseDown = false;
             }
         });
