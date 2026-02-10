@@ -20,7 +20,7 @@ const CLASSES = {
 
 const WEAPONS = {
     pistol: { fireRate: 35, ammoUse: 1, maxAmmo: 12, color: '#f39c12', label: 'P' },
-    smg: { fireRate: 12, ammoUse: 1, maxAmmo: 40, damage: 10, color: '#3498db', label: 'M' },
+    smg: { fireRate: 12, ammoUse: 1, maxAmmo: 40, damage: 13, color: '#3498db', label: 'M' },
     shotgun: { fireRate: 45, ammoUse: 3, maxAmmo: 18, spread: 5, pellets: 5, color: '#e67e22', label: 'S' },
     rifle: { fireRate: 20, ammoUse: 1, maxAmmo: 20, damage: 35, color: '#1abc9c', label: 'F' },
     railgun: { fireRate: 70, ammoUse: 4, maxAmmo: 16, pierce: true, color: '#9b59b6', label: 'R' },
@@ -28,9 +28,9 @@ const WEAPONS = {
     sword: { fireRate: 30, damage: 40, range: 45, arc: Math.PI/2, melee: true, color: '#c0c0c0', label: 'W' },
     katana: { fireRate: 18, damage: 25, range: 55, arc: Math.PI/3, melee: true, color: '#e8e8e8', label: 'K' },
     sniper: { fireRate: 90, ammoUse: 1, maxAmmo: 8, damage: 150, color: '#2c3e50', label: 'N' },
-    flamethrower: { fireRate: 5, ammoUse: 1, maxAmmo: 80, damage: 3, flame: true, color: '#ff4500', label: 'T' },
+    flamethrower: { fireRate: 6, ammoUse: 1, maxAmmo: 70, damage: 2, flame: true, color: '#ff4500', label: 'T' },
     rocketlauncher: { fireRate: 80, ammoUse: 1, maxAmmo: 6, damage: 80, explosive: true, explosionRadius: 60, color: '#556b2f', label: 'L' },
-    bomb: { fireRate: 60, ammoUse: 1, maxAmmo: 5, damage: 150, explosionRadius: 100, placeable: true, fuseTime: 180, color: '#1a1a1a', label: 'B' }
+    bomb: { fireRate: 0, ammoUse: 1, maxAmmo: 5, damage: 150, explosionRadius: 100, placeable: true, fuseTime: 180, color: '#1a1a1a', label: 'B' }
 };
 
 const WEAPON_LIST = ['pistol', 'smg', 'shotgun', 'rifle', 'railgun', 'minigun', 'sword', 'katana', 'sniper', 'flamethrower', 'rocketlauncher', 'bomb'];

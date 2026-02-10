@@ -35,185 +35,238 @@ function drawPlayer() {
 
     // Gun shapes for each weapon type
     if (player.weapon === 'pistol') {
-        // Compact pistol
-        ctx.fillStyle = '#444';
-        ctx.fillRect(4, -3, 10, 6); // Body
-        ctx.fillStyle = weaponColor;
-        ctx.fillRect(6, -2, 8, 4); // Slide
-        ctx.fillStyle = '#333';
-        ctx.fillRect(4, 1, 4, 4); // Grip
+        // Pistol - compact handgun (matches pickup)
+        ctx.fillStyle = '#555'; // Slide
+        ctx.fillRect(4, -4, 18, 5);
+        ctx.fillStyle = '#333'; // Barrel
+        ctx.fillRect(18, -3, 6, 3);
+        ctx.fillStyle = '#6b4226'; // Grip
+        ctx.fillRect(8, 1, 7, 8);
+        ctx.fillStyle = '#4a2e18';
+        ctx.fillRect(9, 2, 5, 6);
+        ctx.fillStyle = weaponColor; // Trigger guard
+        ctx.fillRect(14, 1, 4, 3);
+        ctx.fillStyle = '#777'; // Highlight
+        ctx.fillRect(6, -3, 12, 1);
     } else if (player.weapon === 'smg') {
-        // SMG with extended barrel
-        ctx.fillStyle = '#333';
-        ctx.fillRect(4, -3, 14, 6); // Body
-        ctx.fillStyle = weaponColor;
-        ctx.fillRect(6, -2, 12, 4); // Upper
-        ctx.fillStyle = '#222';
-        ctx.fillRect(4, 1, 5, 5); // Grip
-        ctx.fillRect(10, 2, 3, 3); // Magazine
+        // SMG - compact automatic with stock (matches pickup)
+        ctx.fillStyle = '#444'; // Body
+        ctx.fillRect(4, -4, 22, 6);
+        ctx.fillStyle = '#333'; // Barrel
+        ctx.fillRect(22, -3, 8, 4);
+        ctx.fillStyle = '#222'; // Barrel tip
+        ctx.fillRect(28, -4, 3, 6);
+        ctx.fillStyle = '#555'; // Stock
+        ctx.fillRect(-2, -3, 6, 4);
+        ctx.fillStyle = '#3a3a3a';
+        ctx.fillRect(-4, -2, 3, 5);
+        ctx.fillStyle = '#6b4226'; // Grip
+        ctx.fillRect(10, 2, 5, 7);
+        ctx.fillStyle = weaponColor; // Magazine
+        ctx.fillRect(16, 2, 4, 8);
+        ctx.fillStyle = '#666'; // Highlight
+        ctx.fillRect(6, -3, 16, 1);
     } else if (player.weapon === 'shotgun') {
-        // Wide shotgun
-        ctx.fillStyle = '#5d4e37';
-        ctx.fillRect(4, -4, 16, 8); // Body
-        ctx.fillStyle = weaponColor;
-        ctx.fillRect(14, -3, 6, 6); // Barrel
-        ctx.fillStyle = '#3d3229';
-        ctx.fillRect(4, 1, 6, 5); // Stock
-    } else if (player.weapon === 'rifle') {
-        // Long rifle
-        ctx.fillStyle = '#2c3e50';
-        ctx.fillRect(4, -3, 18, 6); // Body
-        ctx.fillStyle = weaponColor;
-        ctx.fillRect(8, -2, 14, 4); // Upper
-        ctx.fillStyle = '#1a252f';
-        ctx.fillRect(4, 1, 5, 4); // Stock
-        ctx.fillRect(16, -4, 2, 2); // Scope
-    } else if (player.weapon === 'railgun') {
-        // Futuristic railgun
-        ctx.fillStyle = '#2c2c54';
-        ctx.fillRect(4, -4, 20, 8); // Body
-        ctx.fillStyle = weaponColor;
-        ctx.fillRect(8, -3, 16, 6); // Core
-        // Glowing effect
-        ctx.fillStyle = '#fff';
-        ctx.fillRect(18, -2, 6, 4); // Barrel glow
-        ctx.fillStyle = weaponColor;
-        ctx.globalAlpha = 0.5;
-        ctx.fillRect(20, -3, 4, 6); // Energy glow
-        ctx.globalAlpha = 1;
-    } else if (player.weapon === 'minigun') {
-        // Multi-barrel minigun
-        ctx.fillStyle = '#444';
-        ctx.fillRect(4, -5, 18, 10); // Body
-        ctx.fillStyle = weaponColor;
-        ctx.fillRect(14, -6, 8, 3); // Top barrel
-        ctx.fillRect(14, -2, 8, 3); // Mid barrel
-        ctx.fillRect(14, 2, 8, 3); // Bot barrel
+        // Shotgun - long with pump grip (matches pickup)
+        ctx.fillStyle = '#555'; // Receiver
+        ctx.fillRect(6, -4, 14, 6);
+        ctx.fillStyle = '#444'; // Barrel
+        ctx.fillRect(16, -3, 14, 4);
         ctx.fillStyle = '#333';
-        ctx.fillRect(4, 1, 6, 6); // Grip
+        ctx.fillRect(26, -4, 4, 6);
+        ctx.fillStyle = weaponColor; // Pump grip
+        ctx.fillRect(18, 2, 8, 4);
+        ctx.fillStyle = '#6b4226'; // Stock
+        ctx.fillRect(-2, -3, 10, 5);
+        ctx.fillStyle = '#4a2e18';
+        ctx.fillRect(-4, -2, 4, 6);
+        ctx.fillStyle = '#6b4226'; // Grip
+        ctx.fillRect(10, 2, 5, 7);
+        ctx.fillStyle = '#666'; // Highlight
+        ctx.fillRect(17, -2, 10, 1);
+    } else if (player.weapon === 'rifle') {
+        // Rifle - assault rifle (matches pickup)
+        ctx.fillStyle = '#4a4a4a'; // Body
+        ctx.fillRect(4, -4, 20, 6);
+        ctx.fillStyle = '#333'; // Barrel
+        ctx.fillRect(20, -3, 10, 3);
+        ctx.fillStyle = '#222';
+        ctx.fillRect(28, -4, 3, 5);
+        ctx.fillStyle = '#555'; // Stock
+        ctx.fillRect(-2, -3, 8, 5);
+        ctx.fillStyle = '#3a3a3a';
+        ctx.fillRect(-4, -2, 3, 5);
+        ctx.fillStyle = weaponColor; // Magazine
+        ctx.fillRect(12, 2, 4, 8);
+        ctx.fillStyle = '#6b4226'; // Grip
+        ctx.fillRect(8, 2, 5, 7);
+        ctx.fillStyle = '#666'; // Top rail
+        ctx.fillRect(8, -5, 14, 2);
+        ctx.fillStyle = '#777';
+        ctx.fillRect(10, -3, 12, 1);
+    } else if (player.weapon === 'railgun') {
+        // Railgun - sci-fi energy weapon (matches pickup)
+        ctx.fillStyle = '#3a3a4a'; // Body
+        ctx.fillRect(4, -5, 24, 7);
+        ctx.fillStyle = weaponColor; // Energy rails
+        ctx.fillRect(22, -6, 10, 2);
+        ctx.fillRect(22, 2, 10, 2);
+        ctx.fillStyle = '#6a4aaa'; // Energy core
+        ctx.fillRect(12, -3, 6, 4);
+        ctx.fillStyle = '#fff'; // Core glow
+        ctx.fillRect(14, -2, 2, 2);
+        ctx.fillStyle = '#555'; // Stock
+        ctx.fillRect(-2, -3, 8, 5);
+        ctx.fillStyle = '#6b4226'; // Grip
+        ctx.fillRect(10, 2, 5, 7);
+        ctx.fillStyle = weaponColor; // Barrel glow
+        ctx.fillRect(30, -3, 3, 4);
+    } else if (player.weapon === 'minigun') {
+        // Minigun - multi-barrel rotary (matches pickup)
+        ctx.fillStyle = '#555'; // Body
+        ctx.fillRect(4, -5, 14, 8);
+        ctx.fillStyle = '#444'; // Barrels
+        ctx.fillRect(16, -6, 14, 2);
+        ctx.fillRect(16, -2, 14, 2);
+        ctx.fillRect(16, 2, 14, 2);
+        ctx.fillStyle = '#333'; // Barrel housing
+        ctx.fillRect(14, -7, 4, 12);
+        ctx.fillStyle = weaponColor; // Ammo belt
+        ctx.fillRect(8, 4, 8, 5);
+        ctx.fillStyle = '#c9a01a';
+        ctx.fillRect(9, 5, 2, 3);
+        ctx.fillRect(13, 5, 2, 3);
+        ctx.fillStyle = '#6b4226'; // Grip
+        ctx.fillRect(0, -2, 5, 8);
+        ctx.fillStyle = '#666';
+        ctx.fillRect(6, -4, 10, 1);
     } else if (player.weapon === 'sword') {
-        // Sword with swing animation
+        // Sword with swing animation (matches pickup)
         const swingOffset = player.swinging ? (player.swingProgress - 0.5) * weapon.arc : 0;
         ctx.rotate(swingOffset);
-        // Handle
-        ctx.fillStyle = '#5d4e37';
-        ctx.fillRect(4, -2, 8, 4);
-        // Crossguard
-        ctx.fillStyle = '#8b7355';
-        ctx.fillRect(10, -5, 3, 10);
-        // Blade
-        ctx.fillStyle = weaponColor;
-        ctx.fillRect(13, -3, 22, 6);
-        // Blade highlight
-        ctx.fillStyle = '#fff';
-        ctx.fillRect(15, -2, 18, 2);
+        ctx.fillStyle = '#5d4e37'; // Handle
+        ctx.fillRect(4, -2, 8, 5);
+        ctx.fillStyle = '#8b7355'; // Crossguard
+        ctx.fillRect(11, -5, 4, 10);
+        ctx.fillStyle = weaponColor; // Blade
+        ctx.fillRect(15, -3, 20, 5);
         // Blade tip
-        ctx.fillStyle = '#a0a0a0';
         ctx.beginPath();
         ctx.moveTo(35, -3);
         ctx.lineTo(40, 0);
-        ctx.lineTo(35, 3);
+        ctx.lineTo(35, 2);
         ctx.fill();
+        ctx.fillStyle = '#fff'; // Highlight
+        ctx.fillRect(17, -2, 16, 1);
     } else if (player.weapon === 'katana') {
-        // Katana with swing animation
+        // Katana with swing animation (matches pickup)
         const swingOffset = player.swinging ? (player.swingProgress - 0.5) * weapon.arc : 0;
         ctx.rotate(swingOffset);
-        // Wrapped handle
-        ctx.fillStyle = '#2c2c2c';
+        ctx.fillStyle = '#2c2c2c'; // Handle
         ctx.fillRect(4, -2, 10, 4);
-        ctx.fillStyle = '#8b0000'; // Red wrapping
-        ctx.fillRect(5, -2, 2, 4);
-        ctx.fillRect(9, -2, 2, 4);
-        // Circular guard (tsuba)
-        ctx.fillStyle = '#4a4a4a';
+        ctx.fillStyle = '#8b0000'; // Red wrap
+        ctx.fillRect(5, -1, 2, 3);
+        ctx.fillRect(9, -1, 2, 3);
+        ctx.fillStyle = '#d4af37'; // Guard (tsuba)
         ctx.beginPath();
         ctx.arc(14, 0, 4, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.fillStyle = '#ffd700';
-        ctx.beginPath();
-        ctx.arc(14, 0, 2, 0, Math.PI * 2);
         ctx.fill();
         // Curved blade
         ctx.fillStyle = weaponColor;
         ctx.beginPath();
-        ctx.moveTo(18, -2);
-        ctx.quadraticCurveTo(35, -4, 50, -1);
-        ctx.lineTo(50, 1);
-        ctx.quadraticCurveTo(35, 2, 18, 2);
+        ctx.moveTo(18, -3);
+        ctx.quadraticCurveTo(30, -4, 40, -1);
+        ctx.lineTo(40, 1);
+        ctx.quadraticCurveTo(30, 3, 18, 3);
         ctx.closePath();
         ctx.fill();
-        // Blade edge highlight
-        ctx.strokeStyle = '#fff';
-        ctx.lineWidth = 1;
-        ctx.beginPath();
-        ctx.moveTo(20, -1);
-        ctx.quadraticCurveTo(35, -3, 48, -1);
-        ctx.stroke();
+        ctx.fillStyle = '#fff'; // Edge highlight
+        ctx.fillRect(20, -2, 14, 1);
     } else if (player.weapon === 'sniper') {
-        // Long sniper rifle
-        ctx.fillStyle = '#1a1a1a';
-        ctx.fillRect(4, -3, 28, 6); // Long body
-        ctx.fillStyle = weaponColor;
-        ctx.fillRect(6, -2, 24, 4); // Upper receiver
-        ctx.fillStyle = '#4a3728';
-        ctx.fillRect(4, 1, 8, 5); // Stock
-        ctx.fillStyle = '#333';
-        ctx.fillRect(26, -4, 8, 2); // Scope
-        ctx.fillRect(26, -2, 8, 1);
-        ctx.fillStyle = '#5af';
-        ctx.fillRect(27, -3, 2, 1); // Scope lens
-        ctx.fillRect(32, -3, 2, 1);
-    } else if (player.weapon === 'flamethrower') {
-        // Flamethrower with tank
-        ctx.fillStyle = '#444';
-        ctx.fillRect(4, -4, 16, 8); // Body
-        ctx.fillStyle = weaponColor;
-        ctx.fillRect(16, -3, 12, 6); // Nozzle
+        // Sniper - long rifle with scope (matches pickup)
+        ctx.fillStyle = weaponColor; // Body
+        ctx.fillRect(4, -3, 28, 5);
+        ctx.fillStyle = '#333'; // Barrel
+        ctx.fillRect(28, -2, 8, 3);
+        ctx.fillStyle = '#4a3728'; // Stock
+        ctx.fillRect(-2, -2, 8, 5);
+        ctx.fillStyle = '#3a2818';
+        ctx.fillRect(-4, -1, 4, 5);
+        ctx.fillStyle = '#6b4226'; // Grip
+        ctx.fillRect(10, 2, 5, 7);
+        ctx.fillStyle = '#444'; // Scope
+        ctx.fillRect(16, -7, 10, 4);
+        ctx.fillStyle = '#5af'; // Scope lens
+        ctx.fillRect(24, -6, 2, 2);
         ctx.fillStyle = '#666';
-        ctx.fillRect(0, -6, 8, 12); // Tank
+        ctx.fillRect(6, -2, 20, 1);
+    } else if (player.weapon === 'flamethrower') {
+        // Flamethrower - tank + nozzle (matches pickup)
+        ctx.fillStyle = '#666'; // Tank
+        ctx.fillRect(0, -4, 8, 8);
         ctx.fillStyle = '#ff6600';
-        ctx.fillRect(1, -5, 6, 10); // Tank contents
+        ctx.fillRect(1, -3, 6, 6);
+        ctx.fillStyle = '#444'; // Body/pipe
+        ctx.fillRect(8, -3, 14, 5);
+        ctx.fillStyle = weaponColor; // Nozzle
+        ctx.fillRect(22, -4, 8, 7);
         ctx.fillStyle = '#333';
-        ctx.fillRect(4, 2, 6, 4); // Grip
+        ctx.fillRect(28, -5, 3, 9);
+        ctx.fillStyle = '#6b4226'; // Grip
+        ctx.fillRect(12, 2, 5, 6);
         // Flame effect when shooting
         if (G.mouseDown && player.ammo > 0 && player.shootCooldown === 0) {
             ctx.fillStyle = '#ff0';
+            ctx.fillRect(29, -3, 4, 2);
+            ctx.fillStyle = '#f80';
+            ctx.fillRect(31, -1, 4, 2);
+            ctx.fillStyle = '#ff0';
             ctx.beginPath();
-            ctx.moveTo(28, 0);
-            ctx.lineTo(38 + Math.random() * 8, -4 + Math.random() * 8);
-            ctx.lineTo(38 + Math.random() * 8, -4 + Math.random() * 8);
+            ctx.moveTo(31, 0);
+            ctx.lineTo(40 + Math.random() * 8, -4 + Math.random() * 8);
+            ctx.lineTo(40 + Math.random() * 8, -4 + Math.random() * 8);
             ctx.fill();
         }
     } else if (player.weapon === 'rocketlauncher') {
-        // Rocket launcher tube
-        ctx.fillStyle = '#3d3d3d';
-        ctx.fillRect(4, -5, 24, 10); // Tube
-        ctx.fillStyle = weaponColor;
-        ctx.fillRect(6, -4, 20, 8); // Inner tube
-        ctx.fillStyle = '#222';
-        ctx.fillRect(24, -6, 4, 12); // Front rim
-        ctx.fillRect(4, -6, 3, 12); // Back rim
-        ctx.fillStyle = '#444';
-        ctx.fillRect(10, 4, 8, 4); // Handle
-        ctx.fillStyle = '#8b0000';
-        ctx.fillRect(12, -3, 4, 6); // Rocket visible
+        // Rocket launcher - big tube (matches pickup)
+        ctx.fillStyle = weaponColor; // Tube
+        ctx.fillRect(4, -5, 28, 10);
+        ctx.fillStyle = '#222'; // Back rim
+        ctx.fillRect(4, -7, 4, 14);
+        ctx.fillStyle = '#333'; // Front rim
+        ctx.fillRect(28, -7, 4, 14);
+        ctx.fillStyle = '#8b0000'; // Rocket visible
+        ctx.fillRect(14, -3, 6, 6);
+        ctx.fillStyle = '#6b4226'; // Grip
+        ctx.fillRect(14, 5, 5, 6);
+        ctx.fillStyle = '#444'; // Sight
+        ctx.fillRect(22, -8, 3, 4);
     } else if (player.weapon === 'bomb') {
-        // Holding a bomb
+        // Bomb (matches pickup)
         ctx.fillStyle = weaponColor;
         ctx.beginPath();
-        ctx.arc(12, 0, 8, 0, Math.PI * 2);
+        ctx.arc(12, 0, 10, 0, Math.PI * 2);
         ctx.fill();
+        ctx.strokeStyle = '#333';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(12, 0, 10, 0, Math.PI * 2);
+        ctx.stroke();
         // Fuse
         ctx.strokeStyle = '#8b4513';
         ctx.lineWidth = 2;
         ctx.beginPath();
-        ctx.moveTo(18, -4);
-        ctx.quadraticCurveTo(22, -8, 20, -12);
+        ctx.moveTo(18, -7);
+        ctx.quadraticCurveTo(22, -12, 20, -14);
         ctx.stroke();
-        // Fuse spark
+        // Spark
         ctx.fillStyle = '#ff4500';
         ctx.beginPath();
-        ctx.arc(20, -12, 3, 0, Math.PI * 2);
+        ctx.arc(20, -14, 4, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = '#ff0';
+        ctx.beginPath();
+        ctx.arc(20, -14, 2, 0, Math.PI * 2);
         ctx.fill();
     } else {
         // Default fallback

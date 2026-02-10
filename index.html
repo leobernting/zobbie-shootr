@@ -13,41 +13,36 @@
         html, body {
             width: 100%;
             height: 100%;
-            overflow-x: hidden;
+            overflow: hidden;
         }
         body {
-            background: #1a1a2e;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            min-height: 100vh;
+            background: #000;
+            overflow: hidden;
             font-family: monospace;
         }
         #gameContainer {
             text-align: center;
             width: 100%;
             max-width: 100%;
-            padding: 10px;
+            padding: 0;
         }
         canvas {
-            border: 4px solid #4a4a6a;
             image-rendering: pixelated;
             image-rendering: crisp-edges;
-            max-width: 100%;
-            height: auto;
+            max-width: 100vw;
+            max-height: 100vh;
             display: block;
-            margin: 0 auto;
+            margin: auto;
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
         }
         #ui {
-            color: #fff;
-            margin-top: 10px;
-            font-size: 14px;
+            display: none;
         }
         #instructions {
-            color: #888;
-            margin-top: 10px;
-            font-size: 11px;
-            word-wrap: break-word;
+            display: none;
         }
         .mobile-only {
             display: none;
@@ -111,6 +106,19 @@
             G.canvas.height = 480;
         }
         G.W = G.canvas.width;
+        // Scale canvas display to fill viewport while keeping aspect ratio
+        function resizeCanvas() {
+            const ratio = G.canvas.width / G.canvas.height;
+            if (window.innerWidth / window.innerHeight > ratio) {
+                G.canvas.style.height = window.innerHeight + 'px';
+                G.canvas.style.width = (window.innerHeight * ratio) + 'px';
+            } else {
+                G.canvas.style.width = window.innerWidth + 'px';
+                G.canvas.style.height = (window.innerWidth / ratio) + 'px';
+            }
+        }
+        resizeCanvas();
+        window.addEventListener('resize', resizeCanvas);
         const ISO_SCALE = 0.65;
         // Expand world height so it fills the canvas after Y-compression
         const BASE_H = G.isMobile ? 640 : 480; // original layout design height
@@ -181,6 +189,9 @@
         let ENEMY_TYPES = DUNGEON_ENEMIES.dungeon;
         let mouseX = 0, mouseY = 0;
         let mouseDown = false;
+        let nearbyWeapon = null; // weapon pickup the player is standing on
+        let pickupPressed = false; // E key or mobile pickup button
+        let weaponPickupCooldown = 0; // cooldown before picking up another weapon
         let enemyAlerted = false; // true once first enemy starts chasing this level
         let bullets = [];
         let enemies = [];
@@ -1493,6 +1504,8 @@
             }
 
             // Check pickup collisions
+            nearbyWeapon = null;
+            if (weaponPickupCooldown > 0) weaponPickupCooldown--;
             for (let i = pickups.length - 1; i >= 0; i--) {
                 const p = pickups[i];
                 const dist = Math.hypot(player.x - p.x, player.y - p.y);
@@ -1546,7 +1559,10 @@
                         spawnFloatText(p.x, p.y, '+COIN', '#ffd700');
                         SFX.pickup('coin');
                         pickups.splice(i, 1);
-                    } else if (WEAPONS[p.type] && p.type !== player.weapon) {
+                    } else if (WEAPONS[p.type] && p.type !== player.weapon && weaponPickupCooldown <= 0) {
+                        // Track nearby weapon for "Press E" prompt (desktop only)
+                        nearbyWeapon = p;
+                        if (!isMobile && !pickupPressed) continue;
                         // Drop current weapon if not pistol
                         const oldWeapon = player.weapon;
                         player.weapon = p.type;
@@ -1565,6 +1581,10 @@
                         }
                         // Stop any ongoing reload
                         player.reloading = false;
+                        // 2 second shoot cooldown on weapon pickup (120 frames at 60fps)
+                        player.shootCooldown = 120;
+                        // 3 second cooldown before picking up another weapon (180 frames at 60fps)
+                        weaponPickupCooldown = 180;
                         if (oldWeapon !== 'pistol') {
                             pickups.push({
                                 x: p.x,
@@ -1580,6 +1600,7 @@
                     }
                 }
             }
+            pickupPressed = false;
 
             // Update UI
             document.getElementById('health').textContent = `Health: ${player.health}`;
@@ -2024,6 +2045,9 @@
                 const enemy = enemies[i];
                 const dist = Math.hypot(player.x - enemy.x, player.y - enemy.y);
 
+                // Freeze all enemies while player is in the safe zone bubble
+                if (playerInSafeZone) continue;
+
                 if (dist < enemy.alertDistance) {
                     if (!enemyAlerted) {
                         enemyAlerted = true;
@@ -2067,7 +2091,7 @@
 
                     // Melee damage for chargers
                     if (!enemy.canShoot && dist < 20 && !playerInSafeZone && enemy.shootCooldown <= 0) {
-                        if (!godMode) player.health -= Math.floor(8 * currentDamageMult * (1 - playerArmor));
+                        player.health -= Math.floor(8 * currentDamageMult * (1 - playerArmor));
                         enemy.shootCooldown = 30;
                         if (player.health <= 0) { cleanupMultiplayer(); SFX.gameOver(); gameState = 'gameover'; }
                     }
@@ -2114,7 +2138,7 @@
                             }
                         }
 
-                        if (playerHit && !godMode) {
+                        if (playerHit) {
                             player.health -= Math.floor(zone.damage * (1 - playerArmor));
                             if (player.health <= 0) { cleanupMultiplayer(); SFX.gameOver(); gameState = 'gameover'; }
                         }
@@ -2320,7 +2344,7 @@
                     const dist = Math.hypot(b.x - player.x, b.y - player.y);
                     const playerInSafeZone = Math.hypot(player.x - safeZone.x, player.y - safeZone.y) < safeZone.radius;
                     if (dist < 12 && !playerInSafeZone) {
-                        if (!godMode) player.health -= Math.floor(10 * currentDamageMult * (1 - playerArmor));
+                        player.health -= Math.floor(10 * currentDamageMult * (1 - playerArmor));
                         bullets.splice(i, 1);
 
                         if (player.health <= 0) {
@@ -3271,7 +3295,7 @@
                 ctx.globalAlpha = fog * 0.25;
                 ctx.fillStyle = '#000';
                 ctx.beginPath();
-                ctx.ellipse(p.x, p.y + 8, 6, 2.5, 0, 0, Math.PI * 2);
+                ctx.ellipse(p.x, p.y + (WEAPONS[p.type] ? 12 : 8), WEAPONS[p.type] ? 10 : 6, WEAPONS[p.type] ? 3.5 : 2.5, 0, 0, Math.PI * 2);
                 ctx.fill();
                 ctx.globalAlpha = fog;
                 if (p.type === 'health') {
@@ -3328,105 +3352,232 @@
 
                     // Glow effect
                     ctx.beginPath();
-                    ctx.arc(p.x, p.y, 12, 0, Math.PI * 2);
+                    ctx.arc(p.x, p.y, 16, 0, Math.PI * 2);
                     ctx.fillStyle = weapon.color + '40';
                     ctx.fill();
 
-                    if (p.type === 'sword') {
+                    if (p.type === 'pistol') {
+                        // Pistol - compact handgun
+                        ctx.fillStyle = '#555'; // Slide
+                        ctx.fillRect(p.x - 8, p.y - 4, 18, 5);
+                        ctx.fillStyle = '#333'; // Barrel
+                        ctx.fillRect(p.x + 6, p.y - 3, 6, 3);
+                        ctx.fillStyle = '#6b4226'; // Grip
+                        ctx.fillRect(p.x - 4, p.y + 1, 7, 8);
+                        ctx.fillStyle = '#4a2e18';
+                        ctx.fillRect(p.x - 3, p.y + 2, 5, 6);
+                        ctx.fillStyle = weapon.color; // Trigger guard
+                        ctx.fillRect(p.x + 2, p.y + 1, 4, 3);
+                        ctx.fillStyle = '#777'; // Highlight
+                        ctx.fillRect(p.x - 6, p.y - 3, 12, 1);
+                    } else if (p.type === 'smg') {
+                        // SMG - compact automatic with stock
+                        ctx.fillStyle = '#444'; // Body
+                        ctx.fillRect(p.x - 10, p.y - 4, 22, 6);
+                        ctx.fillStyle = '#333'; // Barrel
+                        ctx.fillRect(p.x + 8, p.y - 3, 8, 4);
+                        ctx.fillStyle = '#222'; // Barrel tip
+                        ctx.fillRect(p.x + 14, p.y - 4, 3, 6);
+                        ctx.fillStyle = '#555'; // Stock
+                        ctx.fillRect(p.x - 14, p.y - 3, 6, 4);
+                        ctx.fillStyle = '#3a3a3a';
+                        ctx.fillRect(p.x - 16, p.y - 2, 3, 5);
+                        ctx.fillStyle = '#6b4226'; // Grip
+                        ctx.fillRect(p.x - 2, p.y + 2, 5, 7);
+                        ctx.fillStyle = weapon.color; // Magazine
+                        ctx.fillRect(p.x + 2, p.y + 2, 4, 8);
+                        ctx.fillStyle = '#666'; // Highlight
+                        ctx.fillRect(p.x - 8, p.y - 3, 16, 1);
+                    } else if (p.type === 'shotgun') {
+                        // Shotgun - long with pump grip
+                        ctx.fillStyle = '#555'; // Receiver
+                        ctx.fillRect(p.x - 6, p.y - 4, 14, 6);
+                        ctx.fillStyle = '#444'; // Barrel
+                        ctx.fillRect(p.x + 4, p.y - 3, 14, 4);
+                        ctx.fillStyle = '#333';
+                        ctx.fillRect(p.x + 14, p.y - 4, 4, 6);
+                        ctx.fillStyle = weapon.color; // Pump grip
+                        ctx.fillRect(p.x + 6, p.y + 2, 8, 4);
+                        ctx.fillStyle = '#6b4226'; // Stock
+                        ctx.fillRect(p.x - 14, p.y - 3, 10, 5);
+                        ctx.fillStyle = '#4a2e18';
+                        ctx.fillRect(p.x - 16, p.y - 2, 4, 6);
+                        ctx.fillStyle = '#6b4226'; // Grip
+                        ctx.fillRect(p.x - 2, p.y + 2, 5, 7);
+                        ctx.fillStyle = '#666'; // Highlight
+                        ctx.fillRect(p.x + 5, p.y - 2, 10, 1);
+                    } else if (p.type === 'rifle') {
+                        // Rifle - assault rifle shape
+                        ctx.fillStyle = '#4a4a4a'; // Body
+                        ctx.fillRect(p.x - 8, p.y - 4, 20, 6);
+                        ctx.fillStyle = '#333'; // Barrel
+                        ctx.fillRect(p.x + 8, p.y - 3, 10, 3);
+                        ctx.fillStyle = '#222';
+                        ctx.fillRect(p.x + 16, p.y - 4, 3, 5);
+                        ctx.fillStyle = '#555'; // Stock
+                        ctx.fillRect(p.x - 14, p.y - 3, 8, 5);
+                        ctx.fillStyle = '#3a3a3a';
+                        ctx.fillRect(p.x - 16, p.y - 2, 3, 5);
+                        ctx.fillStyle = weapon.color; // Magazine
+                        ctx.fillRect(p.x + 0, p.y + 2, 4, 8);
+                        ctx.fillStyle = '#6b4226'; // Grip
+                        ctx.fillRect(p.x - 4, p.y + 2, 5, 7);
+                        ctx.fillStyle = '#666'; // Top rail
+                        ctx.fillRect(p.x - 4, p.y - 5, 14, 2);
+                        ctx.fillStyle = '#777';
+                        ctx.fillRect(p.x - 2, p.y - 3, 12, 1);
+                    } else if (p.type === 'railgun') {
+                        // Railgun - sci-fi energy weapon
+                        ctx.fillStyle = '#3a3a4a'; // Body
+                        ctx.fillRect(p.x - 10, p.y - 5, 24, 7);
+                        ctx.fillStyle = weapon.color; // Energy rails
+                        ctx.fillRect(p.x + 8, p.y - 6, 10, 2);
+                        ctx.fillRect(p.x + 8, p.y + 2, 10, 2);
+                        ctx.fillStyle = '#6a4aaa'; // Energy core
+                        ctx.fillRect(p.x - 2, p.y - 3, 6, 4);
+                        ctx.fillStyle = '#fff'; // Core glow
+                        ctx.fillRect(p.x, p.y - 2, 2, 2);
+                        ctx.fillStyle = '#555'; // Stock
+                        ctx.fillRect(p.x - 16, p.y - 3, 8, 5);
+                        ctx.fillStyle = '#6b4226'; // Grip
+                        ctx.fillRect(p.x - 4, p.y + 2, 5, 7);
+                        ctx.fillStyle = weapon.color; // Barrel glow
+                        ctx.fillRect(p.x + 16, p.y - 3, 3, 4);
+                    } else if (p.type === 'minigun') {
+                        // Minigun - multi-barrel rotary
+                        ctx.fillStyle = '#555'; // Body
+                        ctx.fillRect(p.x - 8, p.y - 5, 14, 8);
+                        ctx.fillStyle = '#444'; // Barrels
+                        ctx.fillRect(p.x + 4, p.y - 6, 14, 2);
+                        ctx.fillRect(p.x + 4, p.y - 2, 14, 2);
+                        ctx.fillRect(p.x + 4, p.y + 2, 14, 2);
+                        ctx.fillStyle = '#333'; // Barrel housing
+                        ctx.fillRect(p.x + 2, p.y - 7, 4, 12);
+                        ctx.fillStyle = weapon.color; // Ammo belt
+                        ctx.fillRect(p.x - 4, p.y + 4, 8, 5);
+                        ctx.fillStyle = '#c9a01a';
+                        ctx.fillRect(p.x - 3, p.y + 5, 2, 3);
+                        ctx.fillRect(p.x + 1, p.y + 5, 2, 3);
+                        ctx.fillStyle = '#6b4226'; // Grip
+                        ctx.fillRect(p.x - 12, p.y - 2, 5, 8);
+                        ctx.fillStyle = '#666';
+                        ctx.fillRect(p.x - 6, p.y - 4, 10, 1);
+                    } else if (p.type === 'sword') {
                         // Sword pickup - blade shape
                         ctx.fillStyle = '#5d4e37'; // Handle
-                        ctx.fillRect(p.x - 10, p.y - 2, 6, 4);
+                        ctx.fillRect(p.x - 14, p.y - 2, 8, 5);
                         ctx.fillStyle = '#8b7355'; // Crossguard
-                        ctx.fillRect(p.x - 5, p.y - 4, 3, 8);
+                        ctx.fillRect(p.x - 7, p.y - 5, 4, 10);
                         ctx.fillStyle = weapon.color; // Blade
-                        ctx.fillRect(p.x - 2, p.y - 2, 14, 4);
+                        ctx.fillRect(p.x - 3, p.y - 3, 20, 5);
+                        // Blade tip
+                        ctx.beginPath();
+                        ctx.moveTo(p.x + 17, p.y - 3);
+                        ctx.lineTo(p.x + 22, p.y);
+                        ctx.lineTo(p.x + 17, p.y + 2);
+                        ctx.fill();
                         ctx.fillStyle = '#fff'; // Highlight
-                        ctx.fillRect(p.x, p.y - 1, 10, 1);
+                        ctx.fillRect(p.x - 1, p.y - 2, 16, 1);
                     } else if (p.type === 'katana') {
                         // Katana pickup - curved blade
                         ctx.fillStyle = '#2c2c2c'; // Handle
-                        ctx.fillRect(p.x - 12, p.y - 1, 8, 3);
+                        ctx.fillRect(p.x - 16, p.y - 2, 10, 4);
                         ctx.fillStyle = '#8b0000'; // Red wrap
+                        ctx.fillRect(p.x - 15, p.y - 1, 2, 3);
                         ctx.fillRect(p.x - 11, p.y - 1, 2, 3);
-                        ctx.fillStyle = '#4a4a4a'; // Guard
+                        ctx.fillStyle = '#d4af37'; // Guard (tsuba)
                         ctx.beginPath();
-                        ctx.arc(p.x - 4, p.y, 3, 0, Math.PI * 2);
+                        ctx.arc(p.x - 6, p.y, 4, 0, Math.PI * 2);
                         ctx.fill();
                         ctx.fillStyle = weapon.color; // Blade
                         ctx.beginPath();
-                        ctx.moveTo(p.x - 1, p.y - 2);
-                        ctx.quadraticCurveTo(p.x + 8, p.y - 3, p.x + 14, p.y - 1);
-                        ctx.lineTo(p.x + 14, p.y + 1);
-                        ctx.quadraticCurveTo(p.x + 8, p.y + 2, p.x - 1, p.y + 2);
+                        ctx.moveTo(p.x - 2, p.y - 3);
+                        ctx.quadraticCurveTo(p.x + 10, p.y - 4, p.x + 20, p.y - 1);
+                        ctx.lineTo(p.x + 20, p.y + 1);
+                        ctx.quadraticCurveTo(p.x + 10, p.y + 3, p.x - 2, p.y + 3);
                         ctx.closePath();
                         ctx.fill();
+                        ctx.fillStyle = '#fff'; // Edge highlight
+                        ctx.fillRect(p.x, p.y - 2, 14, 1);
                     } else if (p.type === 'sniper') {
-                        // Sniper pickup - long rifle
-                        ctx.fillStyle = weapon.color;
-                        ctx.fillRect(p.x - 12, p.y - 2, 24, 4);
-                        ctx.fillStyle = '#4a3728';
-                        ctx.fillRect(p.x - 10, p.y + 1, 6, 3);
-                        ctx.fillStyle = '#333';
-                        ctx.fillRect(p.x + 4, p.y - 4, 6, 2); // Scope
-                        ctx.fillStyle = '#5af';
-                        ctx.fillRect(p.x + 5, p.y - 3, 2, 1);
-                    } else if (p.type === 'flamethrower') {
-                        // Flamethrower pickup
+                        // Sniper pickup - long rifle with scope
+                        ctx.fillStyle = weapon.color; // Body
+                        ctx.fillRect(p.x - 10, p.y - 3, 28, 5);
+                        ctx.fillStyle = '#333'; // Barrel
+                        ctx.fillRect(p.x + 14, p.y - 2, 8, 3);
+                        ctx.fillStyle = '#4a3728'; // Stock
+                        ctx.fillRect(p.x - 16, p.y - 2, 8, 5);
+                        ctx.fillStyle = '#3a2818';
+                        ctx.fillRect(p.x - 18, p.y - 1, 4, 5);
+                        ctx.fillStyle = '#6b4226'; // Grip
+                        ctx.fillRect(p.x - 4, p.y + 2, 5, 7);
+                        ctx.fillStyle = '#444'; // Scope
+                        ctx.fillRect(p.x + 2, p.y - 7, 10, 4);
+                        ctx.fillStyle = '#5af'; // Scope lens
+                        ctx.fillRect(p.x + 10, p.y - 6, 2, 2);
                         ctx.fillStyle = '#666';
-                        ctx.fillRect(p.x - 10, p.y - 3, 6, 6); // Tank
+                        ctx.fillRect(p.x - 8, p.y - 2, 20, 1);
+                    } else if (p.type === 'flamethrower') {
+                        // Flamethrower pickup - tank + nozzle
+                        ctx.fillStyle = '#666'; // Tank
+                        ctx.fillRect(p.x - 14, p.y - 4, 8, 8);
                         ctx.fillStyle = '#ff6600';
-                        ctx.fillRect(p.x - 9, p.y - 2, 4, 4);
-                        ctx.fillStyle = '#444';
-                        ctx.fillRect(p.x - 4, p.y - 2, 10, 4); // Body
-                        ctx.fillStyle = weapon.color;
-                        ctx.fillRect(p.x + 6, p.y - 2, 6, 4); // Nozzle
+                        ctx.fillRect(p.x - 13, p.y - 3, 6, 6);
+                        ctx.fillStyle = '#444'; // Body/pipe
+                        ctx.fillRect(p.x - 6, p.y - 3, 14, 5);
+                        ctx.fillStyle = weapon.color; // Nozzle
+                        ctx.fillRect(p.x + 8, p.y - 4, 8, 7);
+                        ctx.fillStyle = '#333';
+                        ctx.fillRect(p.x + 14, p.y - 5, 3, 9);
+                        ctx.fillStyle = '#6b4226'; // Grip
+                        ctx.fillRect(p.x - 2, p.y + 2, 5, 6);
                         // Flame
                         ctx.fillStyle = '#ff0';
-                        ctx.fillRect(p.x + 10, p.y - 1, 4, 2);
+                        ctx.fillRect(p.x + 15, p.y - 3, 4, 2);
+                        ctx.fillStyle = '#f80';
+                        ctx.fillRect(p.x + 17, p.y - 1, 4, 2);
                     } else if (p.type === 'rocketlauncher') {
-                        // Rocket launcher pickup - tube
-                        ctx.fillStyle = weapon.color;
-                        ctx.fillRect(p.x - 10, p.y - 4, 20, 8); // Tube
-                        ctx.fillStyle = '#222';
-                        ctx.fillRect(p.x - 10, p.y - 5, 3, 10); // Back rim
-                        ctx.fillRect(p.x + 7, p.y - 5, 3, 10); // Front rim
-                        ctx.fillStyle = '#8b0000';
-                        ctx.fillRect(p.x - 2, p.y - 2, 4, 4); // Rocket
+                        // Rocket launcher pickup - big tube
+                        ctx.fillStyle = weapon.color; // Tube
+                        ctx.fillRect(p.x - 14, p.y - 5, 28, 10);
+                        ctx.fillStyle = '#222'; // Back rim
+                        ctx.fillRect(p.x - 14, p.y - 7, 4, 14);
+                        ctx.fillStyle = '#333'; // Front rim
+                        ctx.fillRect(p.x + 10, p.y - 7, 4, 14);
+                        ctx.fillStyle = '#8b0000'; // Rocket visible
+                        ctx.fillRect(p.x - 4, p.y - 3, 6, 6);
+                        ctx.fillStyle = '#6b4226'; // Grip
+                        ctx.fillRect(p.x - 4, p.y + 5, 5, 6);
+                        ctx.fillStyle = '#444'; // Sight
+                        ctx.fillRect(p.x + 4, p.y - 8, 3, 4);
                     } else if (p.type === 'bomb') {
-                        // Bomb pickup
+                        // Bomb pickup - bigger bomb
                         ctx.fillStyle = weapon.color;
                         ctx.beginPath();
-                        ctx.arc(p.x, p.y, 8, 0, Math.PI * 2);
+                        ctx.arc(p.x, p.y, 10, 0, Math.PI * 2);
                         ctx.fill();
+                        ctx.fillStyle = '#333';
+                        ctx.beginPath();
+                        ctx.arc(p.x, p.y, 10, 0, Math.PI * 2);
+                        ctx.lineWidth = 2;
+                        ctx.strokeStyle = '#333';
+                        ctx.stroke();
                         // Fuse
                         ctx.strokeStyle = '#8b4513';
                         ctx.lineWidth = 2;
                         ctx.beginPath();
-                        ctx.moveTo(p.x + 5, p.y - 5);
-                        ctx.lineTo(p.x + 8, p.y - 10);
+                        ctx.moveTo(p.x + 6, p.y - 7);
+                        ctx.quadraticCurveTo(p.x + 10, p.y - 12, p.x + 8, p.y - 14);
                         ctx.stroke();
                         // Spark
                         ctx.fillStyle = '#ff4500';
                         ctx.beginPath();
-                        ctx.arc(p.x + 8, p.y - 10, 3, 0, Math.PI * 2);
+                        ctx.arc(p.x + 8, p.y - 14, 4, 0, Math.PI * 2);
                         ctx.fill();
-                    } else {
-                        // Gun shape for ranged weapons
-                        // Gun body (horizontal rectangle)
-                        ctx.fillStyle = weapon.color;
-                        ctx.fillRect(p.x - 8, p.y - 3, 16, 6);
-
-                        // Gun handle
-                        ctx.fillRect(p.x - 2, p.y + 3, 5, 5);
-
-                        // Gun barrel highlight
-                        ctx.fillStyle = '#fff';
-                        ctx.fillRect(p.x + 4, p.y - 1, 4, 2);
-
-                        // Label
-                        ctx.fillStyle = '#fff';
-                        ctx.font = 'bold 8px monospace';
-                        ctx.fillText(weapon.label, p.x - 3, p.y + 1);
+                        ctx.fillStyle = '#ff0';
+                        ctx.beginPath();
+                        ctx.arc(p.x + 8, p.y - 14, 2, 0, Math.PI * 2);
+                        ctx.fill();
                     }
                 }
                 ctx.globalAlpha = 1;
@@ -3546,6 +3697,25 @@
             }
             ctx.globalAlpha = 1;
             ctx.textAlign = 'left';
+
+            // Draw "Press E" prompt above nearby weapon (desktop only)
+            if (nearbyWeapon && !isMobile) {
+                const pw = nearbyWeapon;
+                const bobble = Math.sin(performance.now() / 200) * 2;
+                const promptY = pw.y - 18 + bobble;
+                ctx.font = 'bold 10px monospace';
+                ctx.textAlign = 'center';
+                ctx.fillStyle = '#000';
+                ctx.globalAlpha = 0.5;
+                ctx.fillRect(pw.x - 28, promptY - 8, 56, 12);
+                ctx.globalAlpha = 1;
+                ctx.fillStyle = WEAPONS[pw.type] ? WEAPONS[pw.type].color : '#fff';
+                ctx.fillText('PRESS E', pw.x, promptY);
+                ctx.font = 'bold 8px monospace';
+                ctx.fillStyle = '#ccc';
+                ctx.fillText(pw.type.toUpperCase(), pw.x, promptY + 12);
+                ctx.textAlign = 'left';
+            }
 
             // Draw lighting overlay
             if (selectedDungeon) {
@@ -3702,12 +3872,6 @@
                 ctx.fillText(Music.isMuted() ? '[M]ute' : '[M]usic', canvas.width - 20, isMobile ? 74 : 32);
                 ctx.textAlign = 'left';
 
-                // God mode indicator
-                if (godMode) {
-                    ctx.fillStyle = '#ff0';
-                    ctx.font = 'bold 12px monospace';
-                    ctx.fillText('GOD MODE', 20, 62);
-                }
 
                 // Boss health bar (at top of screen, centered)
                 const boss = enemies.find(e => e.type === 'boss');
@@ -4052,8 +4216,6 @@
         // Cheat code buffer
         let cheatBuffer = '';
         const CHEAT_SKIP = 'gg';
-        const CHEAT_GOD = 'ee';
-        let godMode = false;
 
         // Event listeners
         document.addEventListener('keydown', (e) => {
@@ -4089,20 +4251,16 @@
                 enemies.length = 0;
                 console.log('CHEAT: Enemies cleared!');
             }
-            if (cheatBuffer.endsWith(CHEAT_GOD)) {
-                cheatBuffer = '';
-                godMode = true;
-                player.weapon = 'flamethrower';
-                player.ammo = 999;
-                player.maxAmmo = 999;
-                player.health = 9999;
-                player.maxHealth = 9999;
-                console.log('GOD MODE ACTIVATED!');
-            }
             if (e.key === ' ' && gameState === 'gameover') {
                 clearSavedRun();
                 resetRunState();
                 gameState = 'menu';
+            }
+            if (e.key === 'e' || e.key === 'E') {
+                pickupPressed = true;
+            }
+            if (e.key === 'z' || e.key === 'Z') {
+                mouseDown = true;
             }
             if (e.key === 'm' || e.key === 'M') {
                 Music.toggleMute();
@@ -4120,6 +4278,9 @@
 
         document.addEventListener('keyup', (e) => {
             keys[e.key] = false;
+            if (e.key === 'z' || e.key === 'Z') {
+                mouseDown = false;
+            }
         });
 
         canvas.addEventListener('mousemove', (e) => {
@@ -4399,6 +4560,7 @@
                         handleRunShopClick(tx, ty);
                         return;
                     }
+
 
                     // Left half = movement, Right half = aim and shoot
                     if (tx < W / 2) {
