@@ -356,6 +356,8 @@
                 G.ENEMY_TYPES = ENEMY_TYPES;
                 // Set damage multiplier
                 currentDamageMult = dungeon.enemyDamageMult || 1;
+                // Set dungeon-specific music track
+                Music.setTrack(dungeonKey);
             }
         }
 
@@ -371,6 +373,7 @@
 
         // Centralized kill handler
         function onEnemyKill(enemy) {
+            Music.playEnemyDefeatSFX();
             score += 100;
 
             // Clear boss warning zones when boss dies
